@@ -25,7 +25,7 @@ available_sections = [INTENT, SYNONYM, REGEX, LOOKUP]
 
 # regex for: `[entity_text](entity_type(:entity_synonym)?)`
 ent_regex = re.compile(
-    r"\[(?P<entity_text>[^\]]+)" r"\]\((?P<entity>[^:)]*?)" r"(?:\:(?P<value>[^)]+))?\)"
+    r"\[(?P<entity_text>[^\]]+)\]\((?P<entity>[^:)]*?)(?:\:(?P<value>[^)]+))?(@(?P<subentity>[^)]+))?\)"
 )
 
 item_regex = re.compile(r"\s*[-*+]\s*(.+)")
@@ -146,12 +146,18 @@ class MarkdownReader(TrainingDataReader):
                 entity_value = match.groupdict()["value"]
             else:
                 entity_value = entity_text
+            if match.groupdict()["subentity"]:
+                subentity_value = match.groupdict()["subentity"]
+            else:
+                subentity_value = None
 
             start_index = match.start() - offset
             end_index = start_index + len(entity_text)
             offset += len(match.group(0)) - len(entity_text)
 
-            entity = build_entity(start_index, end_index, entity_value, entity_type)
+            entity = build_entity(
+                start_index, end_index, entity_value, entity_type, subentity_value
+            )
             entities.append(entity)
 
         return entities

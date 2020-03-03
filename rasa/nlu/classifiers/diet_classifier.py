@@ -321,7 +321,13 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
             e["entity"]
             for example in training_data.entity_examples
             for e in example.get(ENTITIES)
-        ) - {None}
+        ) | set(
+            e["sub_entity"]
+            for example in training_data.entity_examples
+            for e in example.get(ENTITIES)
+        ) - {
+            None
+        }
 
         tag_id_dict = {
             tag_id: idx for idx, tag_id in enumerate(sorted(distinct_tag_ids), 1)
@@ -520,10 +526,14 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                 else:
                     _tags = []
                     for t in e.get(TOKENS_NAMES[TEXT]):
-                        _tag = determine_token_labels(t, e.get(ENTITIES), None)
-                        _tags.append(tag_id_dict[_tag])
-                # transpose to have seq_len x 1
-                tag_ids.append(np.array([_tags]).T)
+                        __tags = determine_token_labels(t, e.get(ENTITIES), None)
+                        ids = np.zeros([1, len(tag_id_dict)])
+                        for _tag in __tags:
+                            if _tag is not None:
+                                ids[0, tag_id_dict[_tag]] = 1
+                        _tags.append(ids)
+                # seq_len x 1 x num_tags
+                tag_ids.append(np.array(_tags))
 
         X_sparse = np.array(X_sparse)
         X_dense = np.array(X_dense)

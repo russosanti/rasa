@@ -56,13 +56,24 @@ def write_to_file(filename: Text, text: Any) -> None:
 
 
 def build_entity(
-    start: int, end: int, value: Text, entity_type: Text, **kwargs: Dict[Text, Any]
+    start: int,
+    end: int,
+    value: Text,
+    entity_type: Text,
+    sub_entity_type: Optional[Text] = None,
+    **kwargs: Dict[Text, Any],
 ) -> Dict[Text, Any]:
     """Builds a standard entity dictionary.
 
     Adds additional keyword parameters."""
 
-    entity = {"start": start, "end": end, "value": value, "entity": entity_type}
+    entity = {
+        "start": start,
+        "end": end,
+        "value": value,
+        "entity": entity_type,
+        "sub_entity": sub_entity_type,
+    }
 
     entity.update(kwargs)
     return entity

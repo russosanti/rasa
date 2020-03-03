@@ -1,148 +1,62 @@
-## intent:affirm
-- uh yes im looking for a cheap restaurant in the west part of town
-- yeah a cheap restaurant serving international food
-- correct
-- ye
-- uh yes restaurant that serves danish food
-- let's do it
-- yeah
-- yes that sells korean food
-- yes can i have can i get swedish food in any area
-- yes id like an expensive restaurant in the east part of town
-- uh yes a cheap restaurant
-- yes that serves korean food
-- um yes
-- yes knocking
-- yes italian food
-- yes in the moderately priced
-- thats correct gastropub food
-- uh yes im looking for a cheap restaurant that serves medetanian food
-- yes yes
-- uh yes can i find a restaurant in the east part of town that serves chinese
-- uh yes im looking for malaysian food
-- right
-- yea
-- yes
-- yes i am in the east part of town right now and i am looking for any place that serves indonesian food
-- yes south part of town
-- yes right
-- yes and i dont care about the price range
-- yeah i need to find
-- uh yes i need the north part of town
-- uh yeah im looking for a restaurant in the south part of town and that serves kosher food
-- yea thank you good bye
-- yes can i have
-- yes and in french please
-- uh yes can i find a moderately priced restaurant and it serve it should serve brazilian food
-- right on good bye peace
-- yes in the west part of town
-- yes barbecue food
-- i love that
-- yes spanish restaurant
-
-## intent:deny
-- no danish food
-- no north
-- no
-- no new selection
-- no im looking for pan asian
-- no thanks
-- no i want american food
-- no thank you good bye
-- no thank you
-- no spanish food
-- no im looking in the south of the town
-- no indian food
-- uh no
-- no american food
-- no the south part
-- oh no and cheap
-- no spanish
-- no british food
-- no south part of town
-- no im looking for one that serves vietnamese food
-- do you have something else
-- no chinese
-- no i want halal food
-- no hungarian food
-- no center
-- no this does not work for me
-- no thai
-
-## intent:greet
-- hi there
-- hello there
-- hey
-- hi
-- hey bot
-- good morning
-- goodmorning
-- hello
-- goodevening
-- goodafternoon
-- good evening
-- morning
-- good afternoon
-
 ## intent:inform
-- [afghan](cuisine) food
-- how bout [asian oriental](cuisine)
+- [afghan](cuisine@african) food
+- how bout [asian oriental](cuisine@asian)
 - im looking for a [moderately](price:moderate) priced restaurant in the [east](location) part of town
 - find [moderately](price:moderate) priced restaurant in the [west](location) part of town
-- what about [indian](cuisine) food
+- what about [indian](cuisine@asian) food
 - [south](location) part of town
-- uh how about [turkish](cuisine) type of food
+- uh how about [turkish](cuisine@asian) type of food
 - yea im looking for a really [cheap](price) restaurant
 - a [moderate](price) restaurant in the [west](location) part of town
-- um [english](cuisine)
-- im looking for [tuscan](cuisine) food
+- um [english](cuisine@european)
+- im looking for [tuscan](cuisine@european) food
 - i need a [moderately](price:moderate) priced restaurant in the [west](location) part of town
 - [cheap](price) restaurant in the [east](location) of town
-- id like [moderately](price:moderate) priced [moroccan](cuisine) food
+- id like [moderately](price:moderate) priced [moroccan](cuisine@asian) food
 - im looking for an [expensive](price) restaurant in the [east](location) town
 - [moderately](price:moderate) priced food
-- restaurant [north](location) part of town [seafood](cuisine)
+- restaurant [north](location) part of town [seafood](cuisine@asian)
 - [moderately](price:moderate) priced restaurant in the [south](location) part of town
 - [north](location) part of town
 - [north](location) part
 - [french](cuisine) food
-- serves [british](cuisine) food
+- serves [british](cuisine@european) food
 - i need a [moderately](price:moderate) priced restaurant
 - i want a [moderately](price:moderate) priced restaurant in the [west](location) part of town
 - i want a [cheap](price) restaurant in the [south](location) part of town
-- id like a restaurant in any area that it serves [canapes](cuisine)
-- im looking for a restaurant in the [south](location) part of town serving [jamaican](cuisine) food
-- um what about [italian](cuisine) food
+- id like a restaurant in any area that it serves [canapes](cuisine@european)
+- im looking for a restaurant in the [south](location) part of town serving [jamaican](cuisine@american) food
+- um what about [italian](cuisine@european) food
 - im looking for a [cheap](price) restaurant in the [north](location) part of town
 - the [south](location) part of town
-- im looking for [corsica](cuisine) food
+- im looking for [corsica](cuisine@american) food
 - [south](location)
 - im looking for an [expensive](price) restaurant that serves sea food
 - ah im looking for a [cheap](price) restaurant
 - im looking for [world](cuisine) food
-- im looking for a restaurant that serves [french](cuisine) food
-- how about [indian](cuisine) food
-- can i get a restaurant serving [chinese](cuisine) food
+- im looking for a restaurant that serves [french](cuisine@european) food
+- how about [indian](cuisine@asian) food
+- can i get a restaurant serving [chinese](cuisine@asian) food
 - [irish](cuisine) food
-- im looking for a restaurant in the [west](location) part of town serving [italian](cuisine) food
-- restaurant [south](location) part of town [english](cuisine) food
-- [spanish](cuisine) food
-- how bout one that serves [portuguese](cuisine) food and is cheap
-- [german](cuisine)
+- im looking for a restaurant in the [west](location) part of town serving [italian](cuisine@european) food
+- restaurant [south](location) part of town [english](cuisine@european) food
+- [spanish](cuisine@european) food
+- how bout one that serves [portuguese](cuisine@european) food and is cheap
+- [german](cuisine@european)
 - i need a [moderately](price:moderate) priced restaurant in the [north](location) of town
-- [korean](cuisine) food
-- im looking for [romanian](cuisine) food in the [expensive](price) price range
+- [korean](cuisine@asian) food
+- im looking for [romanian](cuisine@european) food in the [expensive](price) price range
 - i want to find a [moderately](price:moderate) priced restaurant that serves [canapes](cuisine) food
 - im looking for a [moderately](price:moderate) priced labonese restaruant
 - looking for a [moderately](price:moderate) priced restaurant
 - id like to find an [expensive](price) restaurant
 - [gastropub](cuisine)
-- i want a restaurant that serves [french](cuisine) food
+- i want a restaurant that serves [french](cuisine@european) food
 - restaurant [north](location) part of town fast food
 - how about [modern european](cuisine) type of food
 - im looking for a restaurant on the [east](location) part of town that serves scandinavia food
 - the [west](location) part of town
-- i want to find a [cheap](price) restaurant and it should serve [scandinavian](cuisine) food
+- i want to find a [cheap](price) restaurant and it should serve [scandinavian](cuisine@european) food
 - how [european](cuisine)
 - how about [european](cuisine) food
 - looking for something [moderately](price:moderate) priced in the [north](location) side of town
@@ -710,46 +624,3 @@
 - uh [world](cuisine) food
 - i need a [cheap](price) restaurant
 - im looking for [thai](cuisine)
-
-## intent:request_info
-- do you have their [address](info)
-- do you have its [phone number](info)
-- can i have their [phone number](info)
-- what is the [phone number](info) of the restaurant
-- what is their [address](info)
-- may i have the [address](info) of the restaurant
-- whats their [address](info)
-- do you have their [phone number](info)
-- give me their [phone number](info)
-- whats their [phone number](info)
-- do you have its [address](info)
-- may i have the [phone number](info) of the restaurant
-- what is their [phone number](info)
-- give me their [address](info)
-- can i have their [address](info)
-- what is the [address](info) of the restaurant
-
-## intent:thankyou
-- um thank you good bye
-- okay cool uh good bye thank you
-- okay thank you good bye
-- you rock
-- and thats all thank you and good bye
-- thank you and good bye
-- sorry about my mistakes thank you good bye
-- thank you good bye
-- thank you goodbye
-- okay thank you goodbye
-- uh thank you good bye
-- thank you goodbye
-- thank you
-- okay thank you
-- thanks goodbye
-- ah thank you goodbye
-- thank you
-- thank you good bye
-- thanks
-- thank you goodbye
-- uh okay thank you good bye
-- thank you bye
-- um okay thank you good bye
