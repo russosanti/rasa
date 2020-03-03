@@ -532,8 +532,8 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                             if _tag is not None:
                                 ids[0, tag_id_dict[_tag]] = 1
                         _tags.append(ids)
-                # seq_len x 1 x num_tags
-                tag_ids.append(np.array(_tags))
+                # seq_len x num_tags
+                tag_ids.append(np.array(_tags).squeeze(axis=1))
 
         X_sparse = np.array(X_sparse)
         X_dense = np.array(X_dense)
@@ -1323,7 +1323,7 @@ class DIET(RasaModel):
     ) -> Tuple[tf.Tensor, tf.Tensor]:
 
         sequence_lengths = sequence_lengths - 1  # remove cls token
-        tag_ids = tf.cast(tag_ids[:, :, 0], tf.int32)
+        tag_ids = tf.cast(tag_ids[:, :, :], tf.int32)
         logits = self._tf_layers["embed.logits"](outputs)
 
         # should call first to build weights
