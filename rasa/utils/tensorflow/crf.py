@@ -24,13 +24,27 @@ import tensorflow as tf
 # Idea 1: concatenate labels (e.g. location.origin, location.destination) and use CRF as
 # normal. if concatenated label is predicted, split label and apply both.
 # Advantage: no need to change underlying algorithm
-# Disadvantage: we need more training examples; tag and sub-tag are independent
+# Disadvantage: we need more training examples; tag and sub-tag are independent;
+# could become very slow if number of tags is very large
 #
-# Idea 2: adapt the algorithm to predict the two most likely tags at every time step
+# Idea 2: Have two CRFs.
+# Advantage: Will work.
+# Disadvantage: Increase of training/inference time.
+#
+# Idea 3: adapt the algorithm to predict the two most likely tags at every time step
 # we might want to add prob(y1, y2) applied to the same label
 # we should keep it flexible in case no sub-tgs are present
 # Advantage: feels cleaner
 # Disadvantage: need to change implementation
+#
+# Idea 4: Why not simply use an LSTM?
+#
+# explanation CRF:
+# http://www.cs.columbia.edu/~mcollins/fb.pdf
+# https://www.youtube.com/watch?v=PGBlyKtfB74&t=2s
+# multi label CRF:
+# http://people.cs.pitt.edu/~milos/research/SDM_2014_Multilabel_CRF.pdf
+# https://scholarworks.umass.edu/cgi/viewcontent.cgi?article=1184&context=cs_faculty_pubs
 ###
 
 
@@ -491,9 +505,9 @@ def crf_decode(potentials, transition_params, sequence_length):
             tf.constant(0, dtype=tf.int32), sequence_length - 1
         )
 
-        # "viterbi-algorithm" in tensorflow using RNN
+        # calculation via tensorflow using RNN
         # arg max of (prob of tag at position i given features + tag coming after tag-1)
-        # transition_parms = pob of tag coming after tag-1
+        # transition_parms = pob of tag coming after tag-1x
 
         backpointers, last_score = crf_decode_forward(
             inputs, initial_state, transition_params, sequence_length_less_one
