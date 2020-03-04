@@ -1,28 +1,19 @@
 import logging
+import os
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Text, Tuple, Union, Type
 
 import numpy as np
-import os
 import scipy.sparse
 import tensorflow as tf
 import tensorflow_addons as tfa
 
-from typing import Any, Dict, List, Optional, Text, Tuple, Union, Type
-
-import rasa.utils.io as io_utils
 import rasa.nlu.utils.bilou_utils as bilou_utils
-from rasa.nlu.featurizers.featurizer import Featurizer
-from rasa.nlu.components import Component
-from rasa.nlu.classifiers.classifier import IntentClassifier
-from rasa.nlu.extractors.extractor import EntityExtractor
-from rasa.nlu.test import determine_token_labels
-from rasa.nlu.tokenizers.tokenizer import Token
+import rasa.utils.io as io_utils
 from rasa.nlu.classifiers import LABEL_RANKING_LENGTH
-from rasa.utils import train_utils
-from rasa.utils.tensorflow import layers
-from rasa.utils.tensorflow.transformer import TransformerEncoder
-from rasa.utils.tensorflow.models import RasaModel
-from rasa.utils.tensorflow.model_data import RasaModelData, FeatureSignature
+from rasa.nlu.classifiers.classifier import IntentClassifier
+from rasa.nlu.components import Component
+from rasa.nlu.config import RasaNLUModelConfig, InvalidConfigError
 from rasa.nlu.constants import (
     INTENT,
     TEXT,
@@ -32,10 +23,14 @@ from rasa.nlu.constants import (
     DENSE_FEATURE_NAMES,
     TOKENS_NAMES,
 )
-from rasa.nlu.config import RasaNLUModelConfig, InvalidConfigError
-from rasa.nlu.training_data import TrainingData
+from rasa.nlu.extractors.extractor import EntityExtractor
+from rasa.nlu.featurizers.featurizer import Featurizer
 from rasa.nlu.model import Metadata
-from rasa.nlu.training_data import Message
+from rasa.nlu.test import determine_token_labels
+from rasa.nlu.tokenizers.tokenizer import Token
+from rasa.nlu.training_data import TrainingData, Message
+from rasa.utils import train_utils
+from rasa.utils.tensorflow import layers
 from rasa.utils.tensorflow.constants import (
     LABEL,
     HIDDEN_LAYERS_SIZES,
@@ -78,7 +73,9 @@ from rasa.utils.tensorflow.constants import (
     AUTO,
     BALANCED,
 )
-
+from rasa.utils.tensorflow.model_data import RasaModelData, FeatureSignature
+from rasa.utils.tensorflow.models import RasaModel
+from rasa.utils.tensorflow.transformer import TransformerEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +136,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         # Can be either 'sequence' or 'balanced'.
         BATCH_STRATEGY: BALANCED,
         # Number of epochs to train
-        EPOCHS: 300,
+        EPOCHS: 100,
         # Set random seed to any 'int' to get reproducible results
         RANDOM_SEED: None,
         # Initial learning rate for the optimizer
@@ -322,9 +319,10 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
             for example in training_data.entity_examples
             for e in example.get(ENTITIES)
         ) | set(
-            e["sub_entity"]
+            f"{e['entity']}.{e['sub_entity']}"
             for example in training_data.entity_examples
             for e in example.get(ENTITIES)
+            if e["sub_entity"] is not None
         ) - {
             None
         }
@@ -527,13 +525,23 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                     _tags = []
                     for t in e.get(TOKENS_NAMES[TEXT]):
                         __tags = determine_token_labels(t, e.get(ENTITIES), None)
-                        ids = np.zeros([1, len(tag_id_dict)])
-                        for _tag in __tags:
-                            if _tag is not None:
-                                ids[0, tag_id_dict[_tag]] = 1
-                        _tags.append(ids)
+
+                        if len(__tags) == 1 or __tags[1] is None:
+                            _tags.append([tag_id_dict[__tags[0]]])
+                        else:
+                            _tags.append([tag_id_dict[f"{__tags[0]}.{__tags[1]}"]])
+
+                        # ids = np.zeros([1, len(tag_id_dict)])
+                        # for _tag in __tags:
+                        #     if _tag is not None:
+                        #         ids[0, tag_id_dict[_tag]] = 1
+                        # _tags.append(ids)
+
+                # seq_len x 1
+                tag_ids.append(np.array(_tags))
+
                 # seq_len x num_tags
-                tag_ids.append(np.array(_tags).squeeze(axis=1))
+                # tag_ids.append(np.array(_tags).squeeze(axis=1))
 
         X_sparse = np.array(X_sparse)
         X_dense = np.array(X_dense)
@@ -1323,7 +1331,8 @@ class DIET(RasaModel):
     ) -> Tuple[tf.Tensor, tf.Tensor]:
 
         sequence_lengths = sequence_lengths - 1  # remove cls token
-        tag_ids = tf.cast(tag_ids[:, :, :], tf.int32)
+        tag_ids = tf.cast(tag_ids[:, :, 0], tf.int32)
+        # tag_ids = tf.cast(tag_ids[:, :, :], tf.int32)
         logits = self._tf_layers["embed.logits"](outputs)
 
         # should call first to build weights

@@ -19,7 +19,7 @@ async def run():
                 {"name": "LexicalSyntacticFeaturizer"},
                 {
                     "name": "DIETClassifier",
-                    NUM_TRANSFORMER_LAYERS: 0,
+                    NUM_TRANSFORMER_LAYERS: 1,
                     INTENT_CLASSIFICATION: False,
                     BILOU_FLAG: False,
                 },
