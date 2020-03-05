@@ -33,7 +33,7 @@ import tensorflow as tf
 #
 # Idea 3: adapt the algorithm to predict the two most likely tags at every time step
 # we might want to add prob(y1, y2) applied to the same label
-# we should keep it flexible in case no sub-tgs are present
+# we should keep it flexible in case no sub-tags are present
 # Advantage: feels cleaner
 # Disadvantage: need to change implementation
 #

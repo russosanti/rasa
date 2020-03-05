@@ -8,6 +8,7 @@ from rasa.utils.tensorflow.constants import (
     INTENT_CLASSIFICATION,
     NUM_TRANSFORMER_LAYERS,
     BILOU_FLAG,
+    EPOCHS,
 )
 
 
@@ -17,11 +18,19 @@ async def run():
             "pipeline": [
                 {"name": "WhitespaceTokenizer"},
                 {"name": "LexicalSyntacticFeaturizer"},
+                {"name": "CountVectorsFeaturizer"},
+                {
+                    "name": "CountVectorsFeaturizer",
+                    "analyzer": "char_wb",
+                    "max_ngram": 4,
+                    "min_ngram": 1,
+                },
                 {
                     "name": "DIETClassifier",
                     NUM_TRANSFORMER_LAYERS: 1,
                     INTENT_CLASSIFICATION: False,
                     BILOU_FLAG: False,
+                    EPOCHS: 100,
                 },
             ],
             "language": "en",
@@ -31,7 +40,7 @@ async def run():
     (trained, _, persisted_path) = await train(
         _config,
         path=".",
-        data="examples/restaurantbot/data/nlu.md",
+        data="/Users/tabergma/Repositories/training-data/intent_and_entity_datasets/SNIPS/train_multi.md",
         component_builder=ComponentBuilder(),
     )
 
