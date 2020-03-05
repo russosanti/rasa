@@ -7,6 +7,7 @@ import rasa.utils.io as io_utils
 
 # backwards compatibility 1.0.x
 # noinspection PyUnresolvedReferences
+from rasa.nlu.constants import NO_ENTITY_TAG
 from rasa.utils.io import read_json_file
 
 
@@ -72,7 +73,7 @@ def build_entity(
         "end": end,
         "value": value,
         "entity": entity_type,
-        "sub_entity": sub_entity_type,
+        "sub_entity": sub_entity_type if sub_entity_type is not None else NO_ENTITY_TAG,
     }
 
     entity.update(kwargs)

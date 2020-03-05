@@ -257,7 +257,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         self,
         component_config: Optional[Dict[Text, Any]] = None,
         index_label_id_mapping: Optional[Dict[int, Text]] = None,
-        index_tag_id_mapping: Optional[Dict[int, Text]] = None,
+        index_tag_id_mapping: Optional[List[Dict[int, Text]]] = None,
         model: Optional[RasaModel] = None,
     ) -> None:
         """Declare instance variables with default values."""
@@ -308,31 +308,31 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
     def _invert_mapping(mapping: Dict) -> Dict:
         return {value: key for key, value in mapping.items()}
 
-    def _tag_id_index_mapping(self, training_data: TrainingData) -> Dict[Text, int]:
+    def _tag_id_index_mapping(
+        self, training_data: TrainingData
+    ) -> List[Dict[Text, int]]:
         """Create tag_id dictionary"""
 
-        if self.component_config[BILOU_FLAG]:
-            return bilou_utils.build_tag_id_dict(training_data)
+        # if self.component_config[BILOU_FLAG]:
+        #    return bilou_utils.build_tag_id_dict(training_data)
 
-        distinct_tag_ids = set(
-            e["entity"]
-            for example in training_data.entity_examples
-            for e in example.get(ENTITIES)
-        ) | set(
-            f"{e['entity']}.{e['sub_entity']}"
-            for example in training_data.entity_examples
-            for e in example.get(ENTITIES)
-            if e["sub_entity"] is not None
-        ) - {
-            None
-        }
+        def build(key: Text):
+            distinct_tag_ids = set(
+                e[key]
+                for example in training_data.entity_examples
+                for e in example.get(ENTITIES)
+            ) - {None}
 
-        tag_id_dict = {
-            tag_id: idx for idx, tag_id in enumerate(sorted(distinct_tag_ids), 1)
-        }
-        # NO_ENTITY_TAG corresponds to non-entity which should correspond to 0 index
-        # needed for correct prediction for padding
-        tag_id_dict[NO_ENTITY_TAG] = 0
+            tag_id_dict = {
+                tag_id: idx for idx, tag_id in enumerate(sorted(distinct_tag_ids), 1)
+            }
+            # NO_ENTITY_TAG corresponds to non-entity which should correspond to 0 index
+            # needed for correct prediction for padding
+            tag_id_dict[NO_ENTITY_TAG] = 0
+
+            return tag_id_dict
+
+        tag_id_dict = [build("entity"), build("sub_entity")]
 
         return tag_id_dict
 
@@ -488,7 +488,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         self,
         training_data: List[Message],
         label_id_dict: Optional[Dict[Text, int]] = None,
-        tag_id_dict: Optional[Dict[Text, int]] = None,
+        tag_id_dict: Optional[List[Dict[Text, int]]] = None,
         label_attribute: Optional[Text] = None,
     ) -> RasaModelData:
         """Prepare data for training and create a RasaModelData object"""
@@ -499,6 +499,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         Y_dense = []
         label_ids = []
         tag_ids = []
+        sub_tag_ids = []
 
         for e in training_data:
             if label_attribute is None or e.get(label_attribute):
@@ -519,29 +520,20 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                     label_ids.append(label_id_dict[e.get(label_attribute)])
 
             if self.component_config.get(ENTITY_RECOGNITION) and tag_id_dict:
-                if self.component_config[BILOU_FLAG]:
-                    _tags = bilou_utils.tags_to_ids(e, tag_id_dict)
-                else:
-                    _tags = []
-                    for t in e.get(TOKENS_NAMES[TEXT]):
-                        __tags = determine_token_labels(t, e.get(ENTITIES), None)
+                # if self.component_config[BILOU_FLAG]:
+                #    _tags = bilou_utils.tags_to_ids(e, tag_id_dict)
+                # else:
+                _tags = []
+                _sub_tags = []
+                for t in e.get(TOKENS_NAMES[TEXT]):
+                    __tags = determine_token_labels(t, e.get(ENTITIES), None)
 
-                        if len(__tags) == 1 or __tags[1] is None:
-                            _tags.append([tag_id_dict[__tags[0]]])
-                        else:
-                            _tags.append([tag_id_dict[f"{__tags[0]}.{__tags[1]}"]])
-
-                        # ids = np.zeros([1, len(tag_id_dict)])
-                        # for _tag in __tags:
-                        #     if _tag is not None:
-                        #         ids[0, tag_id_dict[_tag]] = 1
-                        # _tags.append(ids)
+                    _tags.append([tag_id_dict[0][__tags[0]]])
+                    _sub_tags.append([tag_id_dict[1][__tags[1]]])
 
                 # seq_len x 1
                 tag_ids.append(np.array(_tags))
-
-                # seq_len x num_tags
-                # tag_ids.append(np.array(_tags).squeeze(axis=1))
+                sub_tag_ids.append(np.array(_sub_tags))
 
         X_sparse = np.array(X_sparse)
         X_dense = np.array(X_dense)
@@ -549,6 +541,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         Y_dense = np.array(Y_dense)
         label_ids = np.array(label_ids)
         tag_ids = np.array(tag_ids)
+        sub_tag_ids = np.array(sub_tag_ids)
 
         model_data = RasaModelData(label_key=self.label_key)
         model_data.add_features(TEXT_FEATURES, [X_sparse, X_dense])
@@ -563,6 +556,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         # to track correctly dynamic sequences
         model_data.add_features(LABEL_IDS, [np.expand_dims(label_ids, -1)])
         model_data.add_features(TAG_IDS, [tag_ids])
+        model_data.add_features("sub_" + TAG_IDS, [sub_tag_ids])
 
         model_data.add_mask(TEXT_MASK, TEXT_FEATURES)
         model_data.add_mask(LABEL_MASK, LABEL_FEATURES)
@@ -594,7 +588,9 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         )
 
         tag_id_index_mapping = self._tag_id_index_mapping(training_data)
-        self.index_tag_id_mapping = self._invert_mapping(tag_id_index_mapping)
+        self.index_tag_id_mapping = [
+            self._invert_mapping(m) for m in tag_id_index_mapping
+        ]
 
         label_attribute = (
             INTENT if self.component_config[INTENT_CLASSIFICATION] else None
@@ -607,7 +603,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
             label_attribute=label_attribute,
         )
 
-        self.num_tags = len(self.index_tag_id_mapping)
+        self.num_tags = [len(m) for m in self.index_tag_id_mapping]
 
         self._check_input_dimension_consistency(model_data)
 
@@ -950,7 +946,7 @@ class DIET(RasaModel):
         self,
         data_signature: Dict[Text, List[FeatureSignature]],
         label_data: RasaModelData,
-        index_tag_id_mapping: Optional[Dict[int, Text]],
+        index_tag_id_mapping: Optional[List[Dict[int, Text]]],
         config: Dict[Text, Any],
     ) -> None:
         super().__init__(name="DIET", random_seed=config[RANDOM_SEED])
@@ -970,9 +966,11 @@ class DIET(RasaModel):
         self.tf_label_data = self.batch_to_model_data_format(
             label_batch, label_data.get_signature()
         )
-        self._num_tags = (
-            len(index_tag_id_mapping) if index_tag_id_mapping is not None else 0
-        )
+
+        if index_tag_id_mapping is None:
+            self._num_tags = 0
+        else:
+            self._num_tags = [len(m) for m in index_tag_id_mapping]
 
         # tf objects
         self._tf_layers: Dict[Text : tf.keras.layers.Layer] = {}
@@ -1150,15 +1148,26 @@ class DIET(RasaModel):
 
     def _prepare_entity_recognition_layers(self) -> None:
         self._tf_layers["embed.logits"] = layers.Embed(
-            self._num_tags, self.config[REGULARIZATION_CONSTANT], "logits"
+            self._num_tags[0], self.config[REGULARIZATION_CONSTANT], "logits"
         )
         self._tf_layers["crf"] = layers.CRF(
-            self._num_tags, self.config[REGULARIZATION_CONSTANT]
+            self._num_tags[0], self.config[REGULARIZATION_CONSTANT]
         )
         self._tf_layers["crf_f1_score"] = tfa.metrics.F1Score(
-            num_classes=self._num_tags - 1,  # `0` prediction is not a prediction
+            num_classes=self._num_tags[0] - 1,  # `0` prediction is not a prediction
             average="micro",
         )
+        if len(self._num_tags) == 2:
+            self._tf_layers["embed.logits"] = layers.Embed(
+                self._num_tags[1], self.config[REGULARIZATION_CONSTANT], "logits"
+            )
+            self._tf_layers["crf"] = layers.CRF(
+                self._num_tags[1], self.config[REGULARIZATION_CONSTANT]
+            )
+            self._tf_layers["crf_f1_score"] = tfa.metrics.F1Score(
+                num_classes=self._num_tags[1] - 1,  # `0` prediction is not a prediction
+                average="micro",
+            )
 
     @staticmethod
     def _get_sequence_lengths(mask: tf.Tensor) -> tf.Tensor:
