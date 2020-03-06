@@ -30,7 +30,7 @@ async def run():
                     NUM_TRANSFORMER_LAYERS: 1,
                     INTENT_CLASSIFICATION: False,
                     BILOU_FLAG: False,
-                    EPOCHS: 3,
+                    EPOCHS: 1,
                 },
             ],
             "language": "en",

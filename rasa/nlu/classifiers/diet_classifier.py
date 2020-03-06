@@ -325,6 +325,8 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
             if e["sub_entity"] is not None
         ) - {
             None
+        } - {
+            NO_ENTITY_TAG
         }
 
         tag_id_dict = {
@@ -525,23 +527,15 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                     _tags = []
                     for t in e.get(TOKENS_NAMES[TEXT]):
                         __tags = determine_token_labels(t, e.get(ENTITIES), None)
-
-                        if len(__tags) == 1 or __tags[1] is None:
-                            _tags.append([tag_id_dict[__tags[0]]])
-                        else:
-                            _tags.append([tag_id_dict[f"{__tags[0]}.{__tags[1]}"]])
-
-                        # ids = np.zeros([1, len(tag_id_dict)])
-                        # for _tag in __tags:
-                        #     if _tag is not None:
-                        #         ids[0, tag_id_dict[_tag]] = 1
-                        # _tags.append(ids)
-
-                # seq_len x 1
-                tag_ids.append(np.array(_tags))
+                        # -1 to ignore NO ENTITY TAG
+                        ids = np.zeros([1, len(tag_id_dict) - 1])
+                        for _tag in __tags:
+                            if _tag is not None and _tag != NO_ENTITY_TAG:
+                                ids[0, tag_id_dict[_tag] - 1] = 1
+                        _tags.append(ids)
 
                 # seq_len x num_tags
-                # tag_ids.append(np.array(_tags).squeeze(axis=1))
+                tag_ids.append(np.array(_tags).squeeze(axis=1))
 
         X_sparse = np.array(X_sparse)
         X_dense = np.array(X_dense)
@@ -736,7 +730,12 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         # load tf graph and session
         predictions = predict_out["e_ids"].numpy()
 
-        tags = [self.index_tag_id_mapping[p] for p in predictions[0]]
+        tags = [NO_ENTITY_TAG] * len(predictions[0])
+        for prediction in predictions[0]:
+            for idx, pred in enumerate(prediction):
+                if pred == 1:
+                    # we did -1 for removing NO ENTITY TAG before
+                    tags[idx] = self.index_tag_id_mapping[idx + 1]
 
         if self.component_config[BILOU_FLAG]:
             tags = bilou_utils.remove_bilou_prefixes(tags)
@@ -1159,13 +1158,12 @@ class DIET(RasaModel):
         self._prepare_dot_product_loss(LABEL)
 
     def _prepare_entity_recognition_layers(self) -> None:
+        # `0` prediction is not a prediction
         self._tf_layers["embed.logits"] = layers.Embed(
-            self._num_tags, self.config[REGULARIZATION_CONSTANT], "logits"
+            self._num_tags - 1, self.config[REGULARIZATION_CONSTANT], "logits"
         )
-        self._tf_layers["crf"] = layers.CRF(
-            self._num_tags, self.config[REGULARIZATION_CONSTANT]
-        )
-        self._tf_layers["crf_f1_score"] = tfa.metrics.F1Score(
+        self._tf_layers["multi_label"] = layers.MultiLabelLoss()
+        self._tf_layers["multi_label_f1_score"] = tfa.metrics.F1Score(
             num_classes=self._num_tags - 1,  # `0` prediction is not a prediction
             average="micro",
         )
@@ -1276,21 +1274,16 @@ class DIET(RasaModel):
         return tf.gather_nd(x, indices)
 
     def _f1_score_from_ids(
-        self, tag_ids: tf.Tensor, pred_ids: tf.Tensor, mask: tf.Tensor
+        self, tag_ids: tf.Tensor, probabilities: tf.Tensor, mask: tf.Tensor
     ) -> tf.Tensor:
         """Calculates f1 score for train predictions"""
 
         mask_bool = tf.cast(mask[:, :, 0], tf.bool)
         # pick only non padding values and flatten sequences
         tag_ids_flat = tf.boolean_mask(tag_ids, mask_bool)
-        pred_ids_flat = tf.boolean_mask(pred_ids, mask_bool)
-        # set `0` prediction to not a prediction
-        tag_ids_flat_one_hot = tf.one_hot(tag_ids_flat - 1, self._num_tags - 1)
-        pred_ids_flat_one_hot = tf.one_hot(pred_ids_flat - 1, self._num_tags - 1)
+        pred_ids_flat = tf.boolean_mask(probabilities, mask_bool)
 
-        return self._tf_layers["crf_f1_score"](
-            tag_ids_flat_one_hot, pred_ids_flat_one_hot
-        )
+        return self._tf_layers["multi_label_f1_score"](tag_ids_flat, pred_ids_flat)
 
     def _mask_loss(
         self,
@@ -1341,18 +1334,18 @@ class DIET(RasaModel):
     ) -> Tuple[tf.Tensor, tf.Tensor]:
 
         sequence_lengths = sequence_lengths - 1  # remove cls token
-        tag_ids = tf.cast(tag_ids[:, :, 0], tf.int32)
-        # tag_ids = tf.cast(tag_ids[:, :, :], tf.int32)
+        tag_ids = tf.cast(tag_ids[:, :, :], tf.int32)
+
         logits = self._tf_layers["embed.logits"](outputs)
 
         # should call first to build weights
-        pred_ids = self._tf_layers["crf"](logits, sequence_lengths)
-        # pytype cannot infer that 'self._tf_layers["crf"]' has the method '.loss'
+        probabilities = self._tf_layers["multi_label"](logits, sequence_lengths)
+        # pytype cannot infer that 'self._tf_layers["multi_label"]' has the method '.loss'
         # pytype: disable=attribute-error
-        loss = self._tf_layers["crf"].loss(logits, tag_ids, sequence_lengths)
+        loss = self._tf_layers["multi_label"].loss(logits, tag_ids)
         # pytype: enable=attribute-error
 
-        f1 = self._f1_score_from_ids(tag_ids, pred_ids, mask)
+        f1 = self._f1_score_from_ids(tag_ids, probabilities, mask)
 
         return loss, f1
 
@@ -1451,7 +1444,7 @@ class DIET(RasaModel):
 
         if self.config[ENTITY_RECOGNITION]:
             logits = self._tf_layers["embed.logits"](text_transformed)
-            pred_ids = self._tf_layers["crf"](logits, sequence_lengths - 1)
+            pred_ids = self._tf_layers["multi_label"](logits, sequence_lengths)
             out["e_ids"] = pred_ids
 
         return out

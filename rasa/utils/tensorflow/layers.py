@@ -261,6 +261,43 @@ class CRF(tf.keras.layers.Layer):
         return tf.reduce_mean(-log_likelihood)
 
 
+class MultiLabelLoss(tf.keras.layers.Layer):
+    def __init__(self, threshold: int = 0.5, name: Optional[Text] = None) -> None:
+        super().__init__(name=name)
+
+        self.threshold = threshold
+
+    def call(self, logits: tf.Tensor, sequence_length: tf.Tensor) -> tf.Tensor:
+        probabilities = tf.nn.sigmoid(logits)
+
+        mask = tf.sequence_mask(
+            sequence_length,
+            maxlen=tf.shape(probabilities)[1],
+            dtype=probabilities.dtype,
+        )
+        mask = tf.expand_dims(mask, axis=2)
+
+        # take all predictions with prob > threshold
+        predictions = tf.where(
+            tf.less_equal(probabilities, self.threshold),
+            tf.zeros_like(probabilities),
+            tf.ones_like(probabilities),
+        )
+
+        # set all predictions to 0.0 if they are not inside the sequence anymore
+        predictions = tf.where(
+            tf.equal(mask, 1.0), predictions, tf.zeros_like(predictions)
+        )
+
+        return predictions
+
+    def loss(self, logits: tf.Tensor, tag_indices: tf.Tensor) -> tf.Tensor:
+        tag_indices = tf.cast(tag_indices, tf.float32)
+        return tf.nn.sigmoid_cross_entropy_with_logits(
+            labels=tag_indices, logits=logits
+        )
+
+
 class DotProductLoss(tf.keras.layers.Layer):
     def __init__(
         self,
