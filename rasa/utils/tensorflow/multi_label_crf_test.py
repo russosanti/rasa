@@ -30,7 +30,7 @@ async def run():
                     NUM_TRANSFORMER_LAYERS: 1,
                     INTENT_CLASSIFICATION: False,
                     BILOU_FLAG: False,
-                    EPOCHS: 100,
+                    EPOCHS: 3,
                 },
             ],
             "language": "en",
@@ -45,7 +45,7 @@ async def run():
     )
 
     loaded = Interpreter.load(persisted_path, ComponentBuilder())
-    print(loaded.parse("I like Italian."))
+    print(loaded.parse("2020 is a year with no snow."))
 
 
 if __name__ == "__main__":

@@ -763,12 +763,22 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
 
             # new tag found
             if last_tag != tag:
-                entity = {
-                    "entity": tag,
-                    "start": token.start,
-                    "end": token.end,
-                    "extractor": "DIET",
-                }
+                if "." in tag:
+                    tag_parts = tag.split(".")
+                    entity = {
+                        "entity": tag_parts[0],
+                        "sub_entity": tag_parts[1],
+                        "start": token.start,
+                        "end": token.end,
+                        "extractor": "DIET",
+                    }
+                else:
+                    entity = {
+                        "entity": tag,
+                        "start": token.start,
+                        "end": token.end,
+                        "extractor": "DIET",
+                    }
                 entities.append(entity)
 
             # belongs to last entity
