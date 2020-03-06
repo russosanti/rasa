@@ -317,11 +317,15 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         #    return bilou_utils.build_tag_id_dict(training_data)
 
         def build(key: Text):
-            distinct_tag_ids = set(
-                e[key]
-                for example in training_data.entity_examples
-                for e in example.get(ENTITIES)
-            ) - {None}
+            distinct_tag_ids = (
+                set(
+                    e[key]
+                    for example in training_data.entity_examples
+                    for e in example.get(ENTITIES)
+                )
+                - {None}
+                - {NO_ENTITY_TAG}
+            )
 
             tag_id_dict = {
                 tag_id: idx for idx, tag_id in enumerate(sorted(distinct_tag_ids), 1)
@@ -732,13 +736,17 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         # load tf graph and session
         predictions = predict_out["e_ids"].numpy()
 
-        tags = [self.index_tag_id_mapping[p] for p in predictions[0]]
+        tags = [self.index_tag_id_mapping[0][p] for p in predictions[0]]
 
-        if self.component_config[BILOU_FLAG]:
-            tags = bilou_utils.remove_bilou_prefixes(tags)
+        predictions = predict_out["se_ids"].numpy()
+
+        sub_tags = [self.index_tag_id_mapping[1][p] for p in predictions[0]]
+
+        # if self.component_config[BILOU_FLAG]:
+        #    tags = bilou_utils.remove_bilou_prefixes(tags)
 
         entities = self._convert_tags_to_entities(
-            message.text, message.get(TOKENS_NAMES[TEXT], []), tags
+            message.text, message.get(TOKENS_NAMES[TEXT], []), tags, sub_tags
         )
 
         extracted = self.add_extractor_name(entities)
@@ -748,11 +756,11 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
 
     @staticmethod
     def _convert_tags_to_entities(
-        text: Text, tokens: List[Token], tags: List[Text]
+        text: Text, tokens: List[Token], tags: List[Text], sub_tags: List[Text]
     ) -> List[Dict[Text, Any]]:
         entities = []
         last_tag = NO_ENTITY_TAG
-        for token, tag in zip(tokens, tags):
+        for token, tag, sub_tag in zip(tokens, tags, sub_tags):
             if tag == NO_ENTITY_TAG:
                 last_tag = tag
                 continue
@@ -761,6 +769,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
             if last_tag != tag:
                 entity = {
                     "entity": tag,
+                    "sub_entity": sub_tag,
                     "start": token.start,
                     "end": token.end,
                     "extractor": "DIET",
@@ -886,9 +895,10 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
             int(key): value for key, value in index_label_id_mapping.items()
         }
         if index_tag_id_mapping is not None:
-            index_tag_id_mapping = {
-                int(key): value for key, value in index_tag_id_mapping.items()
-            }
+            index_tag_id_mapping = [
+                {int(key): value for key, value in m.items()}
+                for m in index_tag_id_mapping
+            ]
 
         return (
             index_label_id_mapping,
@@ -1017,10 +1027,12 @@ class DIET(RasaModel):
         self.mask_loss = tf.keras.metrics.Mean(name="m_loss")
         self.intent_loss = tf.keras.metrics.Mean(name="i_loss")
         self.entity_loss = tf.keras.metrics.Mean(name="e_loss")
+        self.sub_entity_loss = tf.keras.metrics.Mean(name="se_loss")
         # create accuracy metrics second to output accuracies second
         self.mask_acc = tf.keras.metrics.Mean(name="m_acc")
         self.response_acc = tf.keras.metrics.Mean(name="i_acc")
         self.entity_f1 = tf.keras.metrics.Mean(name="e_f1")
+        self.sub_entity_f1 = tf.keras.metrics.Mean(name="se_f1")
 
     def _update_metrics_to_log(self) -> None:
         if self.config[MASKED_LM]:
@@ -1028,7 +1040,7 @@ class DIET(RasaModel):
         if self.config[INTENT_CLASSIFICATION]:
             self.metrics_to_log += ["i_loss", "i_acc"]
         if self.config[ENTITY_RECOGNITION]:
-            self.metrics_to_log += ["e_loss", "e_f1"]
+            self.metrics_to_log += ["e_loss", "e_f1", "se_loss", "se_f1"]
 
     def _prepare_layers(self) -> None:
         self.text_name = TEXT
@@ -1147,27 +1159,27 @@ class DIET(RasaModel):
         self._prepare_dot_product_loss(LABEL)
 
     def _prepare_entity_recognition_layers(self) -> None:
-        self._tf_layers["embed.logits"] = layers.Embed(
-            self._num_tags[0], self.config[REGULARIZATION_CONSTANT], "logits"
+        self._tf_layers["embed.logits.0"] = layers.Embed(
+            self._num_tags[0], self.config[REGULARIZATION_CONSTANT], "logits.0"
         )
-        self._tf_layers["crf"] = layers.CRF(
+        self._tf_layers["crf.0"] = layers.CRF(
             self._num_tags[0], self.config[REGULARIZATION_CONSTANT]
         )
-        self._tf_layers["crf_f1_score"] = tfa.metrics.F1Score(
+        self._tf_layers["crf_f1_score.0"] = tfa.metrics.F1Score(
             num_classes=self._num_tags[0] - 1,  # `0` prediction is not a prediction
             average="micro",
         )
-        if len(self._num_tags) == 2:
-            self._tf_layers["embed.logits"] = layers.Embed(
-                self._num_tags[1], self.config[REGULARIZATION_CONSTANT], "logits"
-            )
-            self._tf_layers["crf"] = layers.CRF(
-                self._num_tags[1], self.config[REGULARIZATION_CONSTANT]
-            )
-            self._tf_layers["crf_f1_score"] = tfa.metrics.F1Score(
-                num_classes=self._num_tags[1] - 1,  # `0` prediction is not a prediction
-                average="micro",
-            )
+
+        self._tf_layers["embed.logits.1"] = layers.Embed(
+            self._num_tags[1], self.config[REGULARIZATION_CONSTANT], "logits.1"
+        )
+        self._tf_layers["crf.1"] = layers.CRF(
+            self._num_tags[1], self.config[REGULARIZATION_CONSTANT]
+        )
+        self._tf_layers["crf_f1_score.1"] = tfa.metrics.F1Score(
+            num_classes=self._num_tags[1] - 1,  # `0` prediction is not a prediction
+            average="micro",
+        )
 
     @staticmethod
     def _get_sequence_lengths(mask: tf.Tensor) -> tf.Tensor:
@@ -1275,7 +1287,7 @@ class DIET(RasaModel):
         return tf.gather_nd(x, indices)
 
     def _f1_score_from_ids(
-        self, tag_ids: tf.Tensor, pred_ids: tf.Tensor, mask: tf.Tensor
+        self, tag_ids: tf.Tensor, pred_ids: tf.Tensor, mask: tf.Tensor, tag_index: int
     ) -> tf.Tensor:
         """Calculates f1 score for train predictions"""
 
@@ -1284,10 +1296,14 @@ class DIET(RasaModel):
         tag_ids_flat = tf.boolean_mask(tag_ids, mask_bool)
         pred_ids_flat = tf.boolean_mask(pred_ids, mask_bool)
         # set `0` prediction to not a prediction
-        tag_ids_flat_one_hot = tf.one_hot(tag_ids_flat - 1, self._num_tags - 1)
-        pred_ids_flat_one_hot = tf.one_hot(pred_ids_flat - 1, self._num_tags - 1)
+        tag_ids_flat_one_hot = tf.one_hot(
+            tag_ids_flat - 1, self._num_tags[tag_index] - 1
+        )
+        pred_ids_flat_one_hot = tf.one_hot(
+            pred_ids_flat - 1, self._num_tags[tag_index] - 1
+        )
 
-        return self._tf_layers["crf_f1_score"](
+        return self._tf_layers[f"crf_f1_score.{tag_index}"](
             tag_ids_flat_one_hot, pred_ids_flat_one_hot
         )
 
@@ -1337,21 +1353,24 @@ class DIET(RasaModel):
         tag_ids: tf.Tensor,
         mask: tf.Tensor,
         sequence_lengths: tf.Tensor,
+        tag_index: int,
     ) -> Tuple[tf.Tensor, tf.Tensor]:
 
         sequence_lengths = sequence_lengths - 1  # remove cls token
         tag_ids = tf.cast(tag_ids[:, :, 0], tf.int32)
         # tag_ids = tf.cast(tag_ids[:, :, :], tf.int32)
-        logits = self._tf_layers["embed.logits"](outputs)
+        logits = self._tf_layers[f"embed.logits.{tag_index}"](outputs)
 
         # should call first to build weights
-        pred_ids = self._tf_layers["crf"](logits, sequence_lengths)
+        pred_ids = self._tf_layers[f"crf.{tag_index}"](logits, sequence_lengths)
         # pytype cannot infer that 'self._tf_layers["crf"]' has the method '.loss'
         # pytype: disable=attribute-error
-        loss = self._tf_layers["crf"].loss(logits, tag_ids, sequence_lengths)
+        loss = self._tf_layers[f"crf.{tag_index}"].loss(
+            logits, tag_ids, sequence_lengths
+        )
         # pytype: enable=attribute-error
 
-        f1 = self._f1_score_from_ids(tag_ids, pred_ids, mask)
+        f1 = self._f1_score_from_ids(tag_ids, pred_ids, mask, tag_index)
 
         return loss, f1
 
@@ -1405,10 +1424,19 @@ class DIET(RasaModel):
             tag_ids = tf_batch_data[TAG_IDS][0]
 
             loss, f1 = self._calculate_entity_loss(
-                text_transformed, tag_ids, mask_text, sequence_lengths
+                text_transformed, tag_ids, mask_text, sequence_lengths, 0
             )
             self.entity_loss.update_state(loss)
             self.entity_f1.update_state(f1)
+            losses.append(loss)
+
+            sub_tag_ids = tf_batch_data["sub_" + TAG_IDS][0]
+
+            loss, f1 = self._calculate_entity_loss(
+                text_transformed, sub_tag_ids, mask_text, sequence_lengths, 1
+            )
+            self.sub_entity_loss.update_state(loss)
+            self.sub_entity_f1.update_state(f1)
             losses.append(loss)
 
         return tf.math.add_n(losses)
@@ -1449,9 +1477,13 @@ class DIET(RasaModel):
             out["i_scores"] = scores
 
         if self.config[ENTITY_RECOGNITION]:
-            logits = self._tf_layers["embed.logits"](text_transformed)
-            pred_ids = self._tf_layers["crf"](logits, sequence_lengths - 1)
+            logits = self._tf_layers["embed.logits.0"](text_transformed)
+            pred_ids = self._tf_layers["crf.0"](logits, sequence_lengths - 1)
             out["e_ids"] = pred_ids
+
+            logits = self._tf_layers["embed.logits.1"](text_transformed)
+            pred_ids = self._tf_layers["crf.1"](logits, sequence_lengths - 1)
+            out["se_ids"] = pred_ids
 
         return out
 
