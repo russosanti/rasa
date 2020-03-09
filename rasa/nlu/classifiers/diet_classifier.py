@@ -777,6 +777,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                         "start": token.start,
                         "end": token.end,
                         "extractor": "DIET",
+                        "sub_entity": NO_ENTITY_TAG,
                     }
                 entities.append(entity)
 
