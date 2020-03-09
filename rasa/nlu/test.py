@@ -824,7 +824,7 @@ def pick_best_entity_fit(token: Token, candidates: List[Dict]) -> List[Text]:
     """
 
     if len(candidates) == 0:
-        return NO_ENTITY_TAG
+        return [NO_ENTITY_TAG, NO_ENTITY_TAG]
     elif len(candidates) == 1:
         return [candidates[0]["entity"], candidates[0]["sub_entity"]]
     else:
@@ -845,7 +845,7 @@ def determine_token_labels(
     """
 
     if entities is None or len(entities) == 0:
-        return NO_ENTITY_TAG
+        return [NO_ENTITY_TAG, NO_ENTITY_TAG]
     if not do_extractors_support_overlap(extractors) and do_entities_overlap(entities):
         raise ValueError("The possible entities should not overlap")
 
