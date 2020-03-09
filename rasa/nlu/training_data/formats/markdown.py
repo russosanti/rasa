@@ -11,8 +11,7 @@ from rasa.nlu.training_data.formats.readerwriter import (
     TrainingDataWriter,
 )
 from rasa.nlu.utils import build_entity
-from rasa.nlu.constants import INTENT
-
+from rasa.nlu.constants import INTENT, NO_ENTITY_TAG
 
 if typing.TYPE_CHECKING:
     from rasa.nlu.training_data import Message, TrainingData
@@ -149,7 +148,7 @@ class MarkdownReader(TrainingDataReader):
             if match.groupdict()["subentity"]:
                 subentity_value = match.groupdict()["subentity"]
             else:
-                subentity_value = None
+                subentity_value = NO_ENTITY_TAG
 
             start_index = match.start() - offset
             end_index = start_index + len(entity_text)
