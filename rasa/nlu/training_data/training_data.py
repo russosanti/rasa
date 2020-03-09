@@ -162,6 +162,12 @@ class TrainingData:
         return set(entity_types)
 
     @lazy_property
+    def sub_entities(self) -> Set[Text]:
+        """Returns the set of entity types in the training data."""
+        entity_types = [e.get("sub_entity") for e in self.sorted_entities()]
+        return set(entity_types)
+
+    @lazy_property
     def examples_per_entity(self) -> Dict[Text, int]:
         """Calculates the number of examples per entity."""
         entity_types = [e.get("entity") for e in self.sorted_entities()]
@@ -418,6 +424,7 @@ class TrainingData:
                 len(self.entity_examples), len(self.entities)
             )
             + "\t- found entities: {}\n".format(list_to_str(self.entities))
+            + "\t- found sub-entities: {}\n".format(list_to_str(self.sub_entities))
         )
 
     def is_empty(self) -> bool:
