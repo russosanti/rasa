@@ -7,6 +7,7 @@ import rasa.utils.io as io_utils
 
 # backwards compatibility 1.0.x
 # noinspection PyUnresolvedReferences
+from rasa.nlu.constants import NO_ENTITY_TAG
 from rasa.utils.io import read_json_file
 
 
@@ -60,7 +61,7 @@ def build_entity(
     end: int,
     value: Text,
     entity_type: Text,
-    sub_entity_type: Optional[Text] = None,
+    sub_entity_type: Optional[Text] = NO_ENTITY_TAG,
     **kwargs: Dict[Text, Any],
 ) -> Dict[Text, Any]:
     """Builds a standard entity dictionary.

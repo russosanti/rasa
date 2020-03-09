@@ -322,7 +322,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
             f"{e['entity']}.{e['sub_entity']}"
             for example in training_data.entity_examples
             for e in example.get(ENTITIES)
-            if e["sub_entity"] is not None
+            if e["sub_entity"] != NO_ENTITY_TAG
         ) - {
             None
         } - {

@@ -824,7 +824,7 @@ def pick_best_entity_fit(token: Token, candidates: List[Dict]) -> List[Text]:
     """
 
     if len(candidates) == 0:
-        return [NO_ENTITY_TAG]
+        return [NO_ENTITY_TAG, NO_ENTITY_TAG]
     elif len(candidates) == 1:
         if (
             candidates[0]["sub_entity"] is not None
@@ -835,7 +835,7 @@ def pick_best_entity_fit(token: Token, candidates: List[Dict]) -> List[Text]:
                 f"{candidates[0]['entity']}.{candidates[0]['sub_entity']}",
             ]
         else:
-            return [candidates[0]["entity"]]
+            return [candidates[0]["entity"], NO_ENTITY_TAG]
     else:
         best_fit = np.argmax([determine_intersection(token, c) for c in candidates])
         if (
@@ -847,7 +847,7 @@ def pick_best_entity_fit(token: Token, candidates: List[Dict]) -> List[Text]:
                 f"{candidates[best_fit]['entity']}.{candidates[best_fit]['sub_entity']}",
             ]
         else:
-            return [candidates[best_fit]["entity"]]
+            return [candidates[best_fit]["entity"], NO_ENTITY_TAG]
 
 
 def determine_token_labels(
@@ -863,7 +863,7 @@ def determine_token_labels(
     """
 
     if entities is None or len(entities) == 0:
-        return [NO_ENTITY_TAG]
+        return [NO_ENTITY_TAG, NO_ENTITY_TAG]
     if not do_extractors_support_overlap(extractors) and do_entities_overlap(entities):
         raise ValueError("The possible entities should not overlap")
 
@@ -902,10 +902,12 @@ def align_entity_predictions(
         entities_by_extractors[p[EXTRACTOR]].append(p)
     extractor_labels: Dict[Text, List] = {extractor: [] for extractor in extractors}
     for t in result.tokens:
-        true_token_labels.append(determine_token_labels(t, result.entity_targets, None))
+        true_token_labels = true_token_labels + determine_token_labels(
+            t, result.entity_targets, None
+        )
         for extractor, entities in entities_by_extractors.items():
             extracted = determine_token_labels(t, entities, {extractor})
-            extractor_labels[extractor].append(extracted)
+            extractor_labels[extractor] = extractor_labels[extractor] + extracted
 
     return {
         "target_labels": true_token_labels,
