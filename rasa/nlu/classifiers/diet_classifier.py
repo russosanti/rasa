@@ -319,7 +319,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
             for example in training_data.entity_examples
             for e in example.get(ENTITIES)
         ) | set(
-            f"{e['entity']}.{e['sub_entity']}"
+            e["sub_entity"]
             for example in training_data.entity_examples
             for e in example.get(ENTITIES)
             if e["sub_entity"] != NO_ENTITY_TAG
@@ -730,15 +730,16 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         # load tf graph and session
         predictions = predict_out["e_ids"].numpy()
 
-        tags = [NO_ENTITY_TAG] * len(predictions[0])
-        for prediction in predictions[0]:
-            for idx, pred in enumerate(prediction):
+        tags = []
+        for token_idx, prediction in enumerate(predictions[0]):
+            tags.append([])
+            for entity_idx, pred in enumerate(prediction):
                 if pred == 1:
                     # we did -1 for removing NO ENTITY TAG before
-                    tags[idx] = self.index_tag_id_mapping[idx + 1]
+                    tags[token_idx] = self.index_tag_id_mapping[entity_idx + 1]
 
-        if self.component_config[BILOU_FLAG]:
-            tags = bilou_utils.remove_bilou_prefixes(tags)
+        # if self.component_config[BILOU_FLAG]:
+        #    tags = bilou_utils.remove_bilou_prefixes(tags)
 
         entities = self._convert_tags_to_entities(
             message.text, message.get(TOKENS_NAMES[TEXT], []), tags
@@ -751,8 +752,10 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
 
     @staticmethod
     def _convert_tags_to_entities(
-        text: Text, tokens: List[Token], tags: List[Text]
+        text: Text, tokens: List[Token], tags: List[List[Text]]
     ) -> List[Dict[Text, Any]]:
+        tags = [".".join(tag) if tag else NO_ENTITY_TAG for tag in tags]
+
         entities = []
         last_tag = NO_ENTITY_TAG
         for token, tag in zip(tokens, tags):
@@ -764,9 +767,11 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
             if last_tag != tag:
                 if "." in tag:
                     tag_parts = tag.split(".")
+                    if len(tag_parts) > 2:
+                        print(f"WARNING: predicted more than 2 entities. {tag_parts}")
                     entity = {
                         "entity": tag_parts[0],
-                        "sub_entity": tag_parts[1],
+                        "sub_entity": tag_parts[-1],
                         "start": token.start,
                         "end": token.end,
                         "extractor": "DIET",
