@@ -61,7 +61,7 @@ def build_entity(
     end: int,
     value: Text,
     entity_type: Text,
-    sub_entity_type: Optional[Text] = None,
+    sub_entity_type: Optional[Text] = NO_ENTITY_TAG,
     **kwargs: Dict[Text, Any],
 ) -> Dict[Text, Any]:
     """Builds a standard entity dictionary.
@@ -73,7 +73,7 @@ def build_entity(
         "end": end,
         "value": value,
         "entity": entity_type,
-        "sub_entity": sub_entity_type if sub_entity_type is not None else NO_ENTITY_TAG,
+        "sub_entity": sub_entity_type,
     }
 
     entity.update(kwargs)
