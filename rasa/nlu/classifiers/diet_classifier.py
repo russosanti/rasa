@@ -531,12 +531,6 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                         else:
                             _tags.append([tag_id_dict[__tags[0]]])
 
-                        # ids = np.zeros([1, len(tag_id_dict)])
-                        # for _tag in __tags:
-                        #     if _tag is not None:
-                        #         ids[0, tag_id_dict[_tag]] = 1
-                        # _tags.append(ids)
-
                 # seq_len x 1
                 tag_ids.append(np.array(_tags))
 
