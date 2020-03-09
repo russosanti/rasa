@@ -3,6 +3,7 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Text
 
+from rasa.nlu.constants import NO_ENTITY_TAG
 import rasa.utils.io as io_utils
 
 # backwards compatibility 1.0.x
@@ -60,7 +61,7 @@ def build_entity(
     end: int,
     value: Text,
     entity_type: Text,
-    sub_entity_type: Optional[Text] = None,
+    sub_entity_type: Optional[Text] = NO_ENTITY_TAG,
     **kwargs: Dict[Text, Any],
 ) -> Dict[Text, Any]:
     """Builds a standard entity dictionary.
