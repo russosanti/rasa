@@ -884,10 +884,12 @@ def align_entity_predictions(
         entities_by_extractors[p[EXTRACTOR]].append(p)
     extractor_labels: Dict[Text, List] = {extractor: [] for extractor in extractors}
     for t in result.tokens:
-        true_token_labels.append(determine_token_labels(t, result.entity_targets, None))
+        true_token_labels = true_token_labels + determine_token_labels(
+            t, result.entity_targets, None
+        )
         for extractor, entities in entities_by_extractors.items():
             extracted = determine_token_labels(t, entities, {extractor})
-            extractor_labels[extractor].append(extracted)
+            extractor_labels[extractor] = extractor_labels[extractor] + extracted
 
     return {
         "target_labels": true_token_labels,
