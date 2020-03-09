@@ -526,10 +526,10 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                     for t in e.get(TOKENS_NAMES[TEXT]):
                         __tags = determine_token_labels(t, e.get(ENTITIES), None)
 
-                        if len(__tags) == 1 or __tags[1] is None:
-                            _tags.append([tag_id_dict[__tags[0]]])
-                        else:
+                        if __tags[1] != NO_ENTITY_TAG:
                             _tags.append([tag_id_dict[f"{__tags[0]}.{__tags[1]}"]])
+                        else:
+                            _tags.append([tag_id_dict[__tags[0]]])
 
                         # ids = np.zeros([1, len(tag_id_dict)])
                         # for _tag in __tags:
