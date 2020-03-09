@@ -736,7 +736,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
             for entity_idx, pred in enumerate(prediction):
                 if pred == 1:
                     # we did -1 for removing NO ENTITY TAG before
-                    tags[token_idx] = self.index_tag_id_mapping[entity_idx + 1]
+                    tags[token_idx].append(self.index_tag_id_mapping[entity_idx + 1])
 
         # if self.component_config[BILOU_FLAG]:
         #    tags = bilou_utils.remove_bilou_prefixes(tags)
