@@ -618,7 +618,7 @@ def collect_incorrect_entity_predictions(
     errors = []
     offset = 0
     for entity_result in entity_results:
-        for i in range(offset, offset + len(entity_result.tokens)):
+        for i in range(offset, offset + len(entity_result.tokens) * 2):
             if merged_targets[i] != merged_predictions[i]:
                 errors.append(
                     {
@@ -628,7 +628,7 @@ def collect_incorrect_entity_predictions(
                     }
                 )
                 break
-        offset += len(entity_result.tokens)
+        offset += len(entity_result.tokens) * 2
     return errors
 
 
@@ -830,7 +830,10 @@ def pick_best_entity_fit(token: Token, candidates: List[Dict]) -> List[Text]:
             candidates[0]["sub_entity"] is not None
             and candidates[0]["sub_entity"] != NO_ENTITY_TAG
         ):
-            return [candidates[0]["entity"], candidates[0]["sub_entity"]]
+            return [
+                candidates[0]["entity"],
+                f"{candidates[0]['entity']}.{candidates[0]['sub_entity']}",
+            ]
         else:
             return [candidates[0]["entity"], NO_ENTITY_TAG]
     else:
@@ -839,7 +842,10 @@ def pick_best_entity_fit(token: Token, candidates: List[Dict]) -> List[Text]:
             candidates[0]["sub_entity"] is not None
             and candidates[0]["sub_entity"] != NO_ENTITY_TAG
         ):
-            return [candidates[best_fit]["entity"], candidates[best_fit]["sub_entity"]]
+            return [
+                candidates[best_fit]["entity"],
+                f"{candidates[0]['entity']}.{candidates[0]['sub_entity']}",
+            ]
         else:
             return [candidates[best_fit]["entity"], NO_ENTITY_TAG]
 
@@ -896,11 +902,12 @@ def align_entity_predictions(
         entities_by_extractors[p[EXTRACTOR]].append(p)
     extractor_labels: Dict[Text, List] = {extractor: [] for extractor in extractors}
     for t in result.tokens:
-        true_token_labels = true_token_labels + determine_token_labels(
-            t, result.entity_targets, None
-        )
+        extracted = determine_token_labels(t, result.entity_targets, None)
+        extracted = [e if "." not in e else e.split(".")[1] for e in extracted]
+        true_token_labels = true_token_labels + extracted
         for extractor, entities in entities_by_extractors.items():
             extracted = determine_token_labels(t, entities, {extractor})
+            extracted = [e if "." not in e else e.split(".")[1] for e in extracted]
             extractor_labels[extractor] = extractor_labels[extractor] + extracted
 
     return {

@@ -311,15 +311,15 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
     def _tag_id_index_mapping(self, training_data: TrainingData) -> Dict[Text, int]:
         """Create tag_id dictionary"""
 
-        if self.component_config[BILOU_FLAG]:
-            return bilou_utils.build_tag_id_dict(training_data)
+        # if self.component_config[BILOU_FLAG]:
+        #    return bilou_utils.build_tag_id_dict(training_data)
 
         distinct_tag_ids = set(
             e["entity"]
             for example in training_data.entity_examples
             for e in example.get(ENTITIES)
         ) | set(
-            e["sub_entity"]
+            f"{e['entity']}.{e['sub_entity']}"
             for example in training_data.entity_examples
             for e in example.get(ENTITIES)
             if e["sub_entity"] != NO_ENTITY_TAG
@@ -521,18 +521,18 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                     label_ids.append(label_id_dict[e.get(label_attribute)])
 
             if self.component_config.get(ENTITY_RECOGNITION) and tag_id_dict:
-                if self.component_config[BILOU_FLAG]:
-                    _tags = bilou_utils.tags_to_ids(e, tag_id_dict)
-                else:
-                    _tags = []
-                    for t in e.get(TOKENS_NAMES[TEXT]):
-                        __tags = determine_token_labels(t, e.get(ENTITIES), None)
-                        # -1 to ignore NO ENTITY TAG
-                        ids = np.zeros([1, len(tag_id_dict) - 1])
-                        for _tag in __tags:
-                            if _tag is not None and _tag != NO_ENTITY_TAG:
-                                ids[0, tag_id_dict[_tag] - 1] = 1
-                        _tags.append(ids)
+                # if self.component_config[BILOU_FLAG]:
+                #    _tags = bilou_utils.tags_to_ids(e, tag_id_dict)
+                # else:
+                _tags = []
+                for t in e.get(TOKENS_NAMES[TEXT]):
+                    __tags = determine_token_labels(t, e.get(ENTITIES), None)
+                    # -1 to ignore NO ENTITY TAG
+                    ids = np.zeros([1, len(tag_id_dict) - 1])
+                    for _tag in __tags:
+                        if _tag is not None and _tag != NO_ENTITY_TAG:
+                            ids[0, tag_id_dict[_tag] - 1] = 1
+                    _tags.append(ids)
 
                 # seq_len x num_tags
                 tag_ids.append(np.array(_tags).squeeze(axis=1))
@@ -752,42 +752,54 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
 
     @staticmethod
     def _convert_tags_to_entities(
-        text: Text, tokens: List[Token], tags: List[List[Text]]
+        text: Text, tokens: List[Token], all_tags: List[List[Text]]
     ) -> List[Dict[Text, Any]]:
-        tags = [".".join(tag) if tag else NO_ENTITY_TAG for tag in tags]
-
         entities = []
         last_tag = NO_ENTITY_TAG
-        for token, tag in zip(tokens, tags):
-            if tag == NO_ENTITY_TAG:
-                last_tag = tag
+        last_sub_tag = NO_ENTITY_TAG
+        for token, tags in zip(tokens, all_tags):
+            if not tags:
+                last_tag = NO_ENTITY_TAG
+                last_sub_tag = NO_ENTITY_TAG
                 continue
+
+            if len(tags) == 1:
+                sub_tag = NO_ENTITY_TAG
+                tag = tags[0]
+                # if just one tag is predicted it should be a entity tag
+                if "." in tag:
+                    tag = NO_ENTITY_TAG
+            elif len(tags) == 2:
+                if "." in tags[0] and "." in tags[1]:
+                    tag = NO_ENTITY_TAG
+                    sub_tag = NO_ENTITY_TAG
+                elif "." in tags[0] and "." not in tags[1]:
+                    tag = tags[1]
+                    sub_tag = tags[0].split(".")[1]
+                elif "." not in tags[0] and "." in tags[1]:
+                    tag = tags[0]
+                    sub_tag = tags[1].split(".")[1]
+                else:
+                    tag = NO_ENTITY_TAG
+                    sub_tag = NO_ENTITY_TAG
+            else:
+                # incorrect predictions, too many
+                tag = NO_ENTITY_TAG
+                sub_tag = NO_ENTITY_TAG
 
             # new tag found
             if last_tag != tag:
-                if "." in tag:
-                    tag_parts = tag.split(".")
-                    if len(tag_parts) > 2:
-                        print(f"WARNING: predicted more than 2 entities. {tag_parts}")
-                    entity = {
-                        "entity": tag_parts[0],
-                        "sub_entity": tag_parts[-1],
-                        "start": token.start,
-                        "end": token.end,
-                        "extractor": "DIET",
-                    }
-                else:
-                    entity = {
-                        "entity": tag,
-                        "start": token.start,
-                        "end": token.end,
-                        "extractor": "DIET",
-                        "sub_entity": NO_ENTITY_TAG,
-                    }
+                entity = {
+                    "entity": tag,
+                    "start": token.start,
+                    "end": token.end,
+                    "extractor": "DIET",
+                    "sub_entity": sub_tag,
+                }
                 entities.append(entity)
 
             # belongs to last entity
-            elif last_tag == tag:
+            elif last_tag == tag and entities:
                 entities[-1]["end"] = token.end
 
             last_tag = tag
@@ -1349,6 +1361,7 @@ class DIET(RasaModel):
         # pytype cannot infer that 'self._tf_layers["multi_label"]' has the method '.loss'
         # pytype: disable=attribute-error
         loss = self._tf_layers["multi_label"].loss(logits, tag_ids)
+        loss = tf.reduce_sum(loss)
         # pytype: enable=attribute-error
 
         f1 = self._f1_score_from_ids(tag_ids, probabilities, mask)

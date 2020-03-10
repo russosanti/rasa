@@ -1,5 +1,6 @@
 import asyncio
 
+from nlu.test import run_evaluation
 from rasa.nlu import train
 from rasa.nlu.components import ComponentBuilder
 from rasa.nlu.config import RasaNLUModelConfig
@@ -30,7 +31,7 @@ async def run():
                     NUM_TRANSFORMER_LAYERS: 1,
                     INTENT_CLASSIFICATION: False,
                     BILOU_FLAG: False,
-                    EPOCHS: 1,
+                    EPOCHS: 10,
                 },
             ],
             "language": "en",
@@ -39,13 +40,17 @@ async def run():
 
     (trained, _, persisted_path) = await train(
         _config,
-        path=".",
+        path="output",
         data="/Users/tabergma/Repositories/training-data/intent_and_entity_datasets/SNIPS/train_multi.md",
         component_builder=ComponentBuilder(),
     )
 
-    loaded = Interpreter.load(persisted_path, ComponentBuilder())
-    print(loaded.parse("2020 is a year with no snow."))
+    run_evaluation(
+        data_path="/Users/tabergma/Repositories/training-data/intent_and_entity_datasets/SNIPS/test_multi.md",
+        model_path=persisted_path,
+        output_directory="output",
+        errors=True,
+    )
 
 
 if __name__ == "__main__":
