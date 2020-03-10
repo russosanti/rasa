@@ -1134,10 +1134,7 @@ class DIET(RasaModel):
         self._tf_layers["embed.logits"] = layers.Embed(
             self._num_tags, self.config[REGULARIZATION_CONSTANT], "logits"
         )
-        self._tf_layers["crf"] = layers.CRF(
-            self._num_tags, self.config[REGULARIZATION_CONSTANT]
-        )
-        self._tf_layers["crf_f1_score"] = tfa.metrics.F1Score(
+        self._tf_layers["f1_score"] = tfa.metrics.F1Score(
             num_classes=self._num_tags - 1,  # `0` prediction is not a prediction
             average="micro",
         )
@@ -1262,9 +1259,7 @@ class DIET(RasaModel):
         tag_ids_flat_one_hot = tf.one_hot(tag_ids_flat - 1, self._num_tags - 1)
         pred_ids_flat_one_hot = tf.one_hot(pred_ids_flat - 1, self._num_tags - 1)
 
-        return self._tf_layers["crf_f1_score"](
-            tag_ids_flat_one_hot, pred_ids_flat_one_hot
-        )
+        return self._tf_layers["f1_score"](tag_ids_flat_one_hot, pred_ids_flat_one_hot)
 
     def _mask_loss(
         self,
@@ -1314,16 +1309,21 @@ class DIET(RasaModel):
         sequence_lengths: tf.Tensor,
     ) -> Tuple[tf.Tensor, tf.Tensor]:
 
-        sequence_lengths = sequence_lengths - 1  # remove cls token
         tag_ids = tf.cast(tag_ids[:, :, 0], tf.int32)
         logits = self._tf_layers["embed.logits"](outputs)
 
         # should call first to build weights
-        pred_ids = self._tf_layers["crf"](logits, sequence_lengths)
-        # pytype cannot infer that 'self._tf_layers["crf"]' has the method '.loss'
-        # pytype: disable=attribute-error
-        loss = self._tf_layers["crf"].loss(logits, tag_ids, sequence_lengths)
-        # pytype: enable=attribute-error
+        softmax_pred = tf.nn.softmax(logits)
+        pred_ids = tf.argmax(input=softmax_pred, axis=-1)
+
+        pred_ids = tf.where(
+            tf.equal(tf.squeeze(mask), 1.0), pred_ids, tf.zeros_like(pred_ids)
+        )
+
+        one_hot_tag_ids = tf.one_hot(tag_ids, depth=logits.shape[-1])
+
+        loss = tf.nn.softmax_cross_entropy_with_logits(one_hot_tag_ids, logits)
+        loss = tf.reduce_sum(loss)
 
         f1 = self._f1_score_from_ids(tag_ids, pred_ids, mask)
 
