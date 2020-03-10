@@ -618,7 +618,7 @@ def collect_incorrect_entity_predictions(
     errors = []
     offset = 0
     for entity_result in entity_results:
-        for i in range(offset, offset + len(entity_result.tokens)):
+        for i in range(offset, offset + len(entity_result.tokens) * 2):
             if merged_targets[i] != merged_predictions[i]:
                 errors.append(
                     {
@@ -628,7 +628,7 @@ def collect_incorrect_entity_predictions(
                     }
                 )
                 break
-        offset += len(entity_result.tokens)
+        offset += len(entity_result.tokens) * 2
     return errors
 
 
