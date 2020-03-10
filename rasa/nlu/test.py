@@ -830,10 +830,7 @@ def pick_best_entity_fit(token: Token, candidates: List[Dict]) -> List[Text]:
             candidates[0]["sub_entity"] is not None
             and candidates[0]["sub_entity"] != NO_ENTITY_TAG
         ):
-            return [
-                candidates[0]["entity"],
-                f"{candidates[0]['entity']}.{candidates[0]['sub_entity']}",
-            ]
+            return [candidates[0]["entity"], candidates[0]["sub_entity"]]
         else:
             return [candidates[0]["entity"], NO_ENTITY_TAG]
     else:
@@ -842,10 +839,7 @@ def pick_best_entity_fit(token: Token, candidates: List[Dict]) -> List[Text]:
             candidates[0]["sub_entity"] is not None
             and candidates[0]["sub_entity"] != NO_ENTITY_TAG
         ):
-            return [
-                candidates[best_fit]["entity"],
-                f"{candidates[best_fit]['entity']}.{candidates[best_fit]['sub_entity']}",
-            ]
+            return [candidates[best_fit]["entity"], candidates[best_fit]["sub_entity"]]
         else:
             return [candidates[best_fit]["entity"], NO_ENTITY_TAG]
 
