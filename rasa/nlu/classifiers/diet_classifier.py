@@ -756,11 +756,10 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
     ) -> List[Dict[Text, Any]]:
         entities = []
         last_tag = NO_ENTITY_TAG
-        last_sub_tag = NO_ENTITY_TAG
+
         for token, tags in zip(tokens, all_tags):
             if not tags:
                 last_tag = NO_ENTITY_TAG
-                last_sub_tag = NO_ENTITY_TAG
                 continue
 
             if len(tags) == 1:
@@ -770,7 +769,15 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                 if "." in tag:
                     tag = NO_ENTITY_TAG
             elif len(tags) == 2:
-                if "." in tags[0] and "." in tags[1]:
+                if "location" in tags:
+                    tag = "location"
+                    idx = tags.index("location")
+                    sub_tag = tags[[1, 0][idx]]
+                elif "time" in tags:
+                    tag = "time"
+                    idx = tags.index("time")
+                    sub_tag = tags[[1, 0][idx]]
+                elif "." in tags[0] and "." in tags[1]:
                     tag = NO_ENTITY_TAG
                     sub_tag = NO_ENTITY_TAG
                 elif "." in tags[0] and "." not in tags[1]:
