@@ -60,6 +60,8 @@ from rasa.utils.tensorflow.constants import (
     SOFTMAX,
     AUTO,
     BALANCED,
+    TENSORBOARD_LOG_DIR,
+    TENSORBOARD_LOG_LEVEL,
 )
 from rasa.nlu.constants import (
     RESPONSE,
@@ -186,6 +188,13 @@ class ResponseSelector(DIETClassifier):
         MASKED_LM: False,
         # Name of the intent for which this response selector is to be trained
         RETRIEVAL_INTENT: None,
+        # If you want to use tensorboard to visualize training and validation metrics,
+        # set this option to a valid output directory.
+        TENSORBOARD_LOG_DIR: None,
+        # Define when training metrics for tensorboard should be logged.
+        # Either after every epoch or for every training step.
+        # Valid values: 'epoch' and 'minibatch'
+        TENSORBOARD_LOG_LEVEL: "epoch",
     }
 
     def __init__(
@@ -217,13 +226,6 @@ class ResponseSelector(DIETClassifier):
 
     def _load_selector_params(self, config: Dict[Text, Any]) -> None:
         self.retrieval_intent = config[RETRIEVAL_INTENT]
-        if not self.retrieval_intent:
-            # retrieval intent was left to its default value
-            logger.info(
-                "Retrieval intent parameter was left to its default value. This "
-                "response selector will be trained on training examples combining "
-                "all retrieval intents."
-            )
 
     def _check_config_parameters(self) -> None:
         super()._check_config_parameters()
@@ -249,6 +251,13 @@ class ResponseSelector(DIETClassifier):
 
         if self.retrieval_intent:
             training_data = training_data.filter_by_intent(self.retrieval_intent)
+        else:
+            # retrieval intent was left to its default value
+            logger.info(
+                "Retrieval intent parameter was left to its default value. This "
+                "response selector will be trained on training examples combining "
+                "all retrieval intents."
+            )
 
         label_id_index_mapping = self._label_id_index_mapping(
             training_data, attribute=RESPONSE
