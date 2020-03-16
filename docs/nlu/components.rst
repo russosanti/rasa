@@ -676,10 +676,6 @@ MitieIntentClassifier
 SklearnIntentClassifier
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-.. warning::
-    ``SklearnIntentClassifier`` is deprecated and should be replaced by ``DIETClassifier``. See
-    :ref:`migration guide <migration-to-rasa-1.8>` for more details.
-
 :Short: Sklearn intent classifier
 :Outputs: ``intent`` and ``intent_ranking``
 :Requires: ``dense_features`` for user messages
@@ -923,6 +919,15 @@ EmbeddingIntentClassifier
             # How many examples to use for hold out validation set
             # Large values may hurt performance, e.g. model accuracy.
             "evaluate_on_number_of_examples": 0
+            # If you want to use tensorboard to visualize training metrics,
+            # set this option to a valid output directory.
+            # You can view the training metrics after training in tensorboard via
+            # ``tensorboard --logdir <path-to-given-directory>``
+            "tensorboard_log_directory": None
+            # Define when training metrics for tensorboard should be logged.
+            # Either after every epoch or for every training step.
+            # Valid values: 'epoch' and 'minibatch'
+            "tensorboard_log_level": "epoch"
 
 .. _keyword_intent_classifier:
 
@@ -1103,7 +1108,16 @@ ResponseSelector
             # should predict those tokens.
             "use_masked_language_model": False
             # Name of the intent for which this response selector is to be trained
-            "retrieval_intent: None
+            "retrieval_intent": None
+            # If you want to use tensorboard to visualize training metrics,
+            # set this option to a valid output directory.
+            # You can view the training metrics after training in tensorboard via
+            # ``tensorboard --logdir <path-to-given-directory>``
+            "tensorboard_log_directory": None
+            # Define when training metrics for tensorboard should be logged.
+            # Either after every epoch or for every training step.
+            # Valid values: 'epoch' and 'minibatch'
+            "tensorboard_log_level": "epoch"
 
 
 Entity Extractors
@@ -1266,10 +1280,6 @@ CRFEntityExtractor
 
     .. note::
         If "pattern" features are used, you need to have ``RegexFeaturizer`` in your pipeline.
-
-    .. warning::
-        ``CRFEntityExtractor`` is deprecated and should be replaced by ``DIETClassifier``. See
-        :ref:`migration guide <migration-to-rasa-1.8>` for more details.
 
 :Configuration:
     ``CRFEntityExtractor`` has a list of default features to use.
@@ -1667,3 +1677,12 @@ DIETClassifier
             # examples per entity are required.
             # Rule of thumb: you should have more than 100 examples per entity.
             "BILOU_flag": True
+            # If you want to use tensorboard to visualize training metrics,
+            # set this option to a valid output directory.
+            # You can view the training metrics after training in tensorboard via
+            # ``tensorboard --logdir <path-to-given-directory>``
+            "tensorboard_log_directory": None
+            # Define when training metrics for tensorboard should be logged.
+            # Either after every epoch or for every training step.
+            # Valid values: 'epoch' and 'minibatch'
+            "tensorboard_log_level": "epoch"
