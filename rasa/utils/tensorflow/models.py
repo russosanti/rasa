@@ -1,14 +1,21 @@
+import datetime
+
 import tensorflow as tf
 import numpy as np
 import logging
 from collections import defaultdict
 from typing import List, Text, Dict, Tuple, Union, Optional, Callable
+
+from tensorflow_core.python.ops.summary_ops_v2 import ResourceSummaryWriter
 from tqdm import tqdm
 from rasa.utils.common import is_logging_disabled
 from rasa.utils.tensorflow.model_data import RasaModelData, FeatureSignature
-from rasa.utils.tensorflow.constants import SEQUENCE
+from rasa.utils.tensorflow.constants import SEQUENCE, TENSORBOARD_LOG_LEVEL
 
 logger = logging.getLogger(__name__)
+
+
+TENSORBOARD_LOG_LEVELS = ["epoch", "minibatch"]
 
 
 # noinspection PyMethodOverriding
@@ -18,7 +25,13 @@ class RasaModel(tf.keras.models.Model):
     Cannot be used as tf.keras.Model
     """
 
-    def __init__(self, random_seed: Optional[int] = None, **kwargs) -> None:
+    def __init__(
+        self,
+        random_seed: Optional[int] = None,
+        tensorboard_log_dir: Optional[Text] = None,
+        tensorboard_log_level: Optional[Text] = "epoch",
+        **kwargs,
+    ) -> None:
         """Initialize the RasaModel.
 
         Args:
@@ -34,6 +47,37 @@ class RasaModel(tf.keras.models.Model):
         self._predict_function = None
 
         self.random_seed = random_seed
+
+        self.train_summary_writer = None
+        self.test_summary_writer = None
+        self.model_summary_file = None
+        self.tensorboard_log_on_epochs = True
+
+        self._set_up_tensorboard_writer(tensorboard_log_level, tensorboard_log_dir)
+
+    def _set_up_tensorboard_writer(
+        self, tensorboard_log_level: Text, tensorboard_log_dir: Optional[Text] = None
+    ) -> None:
+        if tensorboard_log_dir is not None:
+            if tensorboard_log_level not in TENSORBOARD_LOG_LEVELS:
+                raise ValueError(
+                    f"Provided '{TENSORBOARD_LOG_LEVEL}' ('{tensorboard_log_level}') "
+                    f"is invalid! Valid values are: {TENSORBOARD_LOG_LEVELS}"
+                )
+
+            self.tensorboard_log_on_epochs = tensorboard_log_level == "epoch"
+
+            current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+            train_log_dir = f"{tensorboard_log_dir}/{current_time}/train"
+            test_log_dir = f"{tensorboard_log_dir}/{current_time}/test"
+
+            self.train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+            self.test_summary_writer = tf.summary.create_file_writer(test_log_dir)
+
+            self.model_summary_file = (
+                f"{tensorboard_log_dir}/{current_time}/model_summary.txt"
+            )
 
     def batch_loss(
         self, batch_in: Union[Tuple[tf.Tensor], Tuple[np.ndarray]]
@@ -87,33 +131,45 @@ class RasaModel(tf.keras.models.Model):
         val_results = {}  # validation is not performed every epoch
         progress_bar = tqdm(range(epochs), desc="Epochs", disable=disable)
 
+        train_steps = 0
+        evaluation_steps = 0
+
         for epoch in progress_bar:
             epoch_batch_size = self.linearly_increasing_batch_size(
                 epoch, batch_size, epochs
             )
 
-            self._batch_loop(
+            train_steps = self._batch_loop(
                 train_dataset_function,
                 tf_train_on_batch_function,
                 epoch_batch_size,
                 True,
+                train_steps,
+                self.train_summary_writer,
             )
 
-            postfix_dict = self._get_metric_results()
+            postfix_dict = self._get_metric_results(epoch, self.train_summary_writer)
 
             if evaluate_on_num_examples > 0:
                 if self._should_evaluate(evaluate_every_num_epochs, epochs, epoch):
-                    self._batch_loop(
+                    evaluation_steps = self._batch_loop(
                         evaluation_dataset_function,
                         tf_evaluation_on_batch_function,
                         epoch_batch_size,
                         False,
+                        evaluation_steps,
+                        self.test_summary_writer,
                     )
-                    val_results = self._get_metric_results(prefix="val_")
+                    val_results = self._get_metric_results(
+                        epoch, self.test_summary_writer, prefix="val_"
+                    )
 
                 postfix_dict.update(val_results)
 
             progress_bar.set_postfix(postfix_dict)
+
+        if self.model_summary_file is not None:
+            self._write_model_summary()
 
         self._training = None  # training phase should be defined when building a graph
         if not disable:
@@ -194,13 +250,24 @@ class RasaModel(tf.keras.models.Model):
         call_model_function: Callable,
         batch_size: int,
         training: bool,
-    ) -> None:
+        offset: int,
+        writer: Optional[ResourceSummaryWriter] = None,
+    ) -> int:
         """Run on batches"""
 
         self.reset_metrics()
+
+        step = offset
+
         self._training = training  # needed for eager mode
         for batch_in in dataset_function(batch_size):
             call_model_function(batch_in)
+
+            if writer is not None and not self.tensorboard_log_on_epochs:
+                self._log_metrics_for_tensorboard(step, writer)
+            step += 1
+
+        return step
 
     @staticmethod
     def _get_tf_call_model_function(
@@ -263,16 +330,31 @@ class RasaModel(tf.keras.models.Model):
             ),
         )
 
-    def _get_metric_results(self, prefix: Optional[Text] = None) -> Dict[Text, Text]:
+    def _get_metric_results(
+        self,
+        epoch: int,
+        writer: Optional[ResourceSummaryWriter] = None,
+        prefix: Optional[Text] = None,
+    ) -> Dict[Text, Text]:
         """Get the metrics results"""
-
         prefix = prefix or ""
+
+        if writer is not None and self.tensorboard_log_on_epochs:
+            self._log_metrics_for_tensorboard(epoch, writer)
 
         return {
             f"{prefix}{metric.name}": f"{metric.result().numpy():.3f}"
             for metric in self.metrics
             if metric.name in self.metrics_to_log
         }
+
+    def _log_metrics_for_tensorboard(
+        self, step: int, writer: ResourceSummaryWriter
+    ) -> None:
+        with writer.as_default():
+            for metric in self.metrics:
+                if metric.name in self.metrics_to_log:
+                    tf.summary.scalar(f"{metric.name}", metric.result(), step=step)
 
     @staticmethod
     def _should_evaluate(
@@ -341,6 +423,28 @@ class RasaModel(tf.keras.models.Model):
             )
         else:
             return int(batch_size[0])
+
+    def _write_model_summary(self):
+        total_number_of_variables = np.sum(
+            [np.prod(v.shape) for v in self.trainable_variables]
+        )
+        layers = [
+            f"{layer.name} ({layer.dtype.name}) "
+            f"[{'x'.join([str(s) for s in layer.shape])}]"
+            for layer in self.trainable_variables
+        ]
+        layers.reverse()
+
+        file = open(self.model_summary_file, "w")
+
+        file.write("Variables: name (type) [shape]\n\n")
+        for layer in layers:
+            file.write(layer)
+            file.write("\n")
+        file.write("\n")
+        file.write(f"Total size of variables: {total_number_of_variables}")
+
+        file.close()
 
     def compile(self, *args, **kwargs) -> None:
         raise Exception(
