@@ -1440,7 +1440,11 @@ class DIET(RasaModel):
 
         if self.config[ENTITY_RECOGNITION]:
             logits = self._tf_layers["embed.logits"](text_transformed)
-            pred_ids = self._tf_layers["crf"](logits, sequence_lengths - 1)
+
+            # should call first to build weights
+            softmax_pred = tf.nn.softmax(logits)
+            pred_ids = tf.argmax(input=softmax_pred, axis=-1)
+
             out["e_ids"] = pred_ids
 
         return out
