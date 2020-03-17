@@ -1372,12 +1372,17 @@ class DIET(RasaModel):
         mask: tf.Tensor,
         sequence_lengths: tf.Tensor,
         tag_index: int,
-    ) -> Tuple[tf.Tensor, tf.Tensor]:
+        previous_logits: Optional[tf.Tensor] = None,
+    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
 
         sequence_lengths = sequence_lengths - 1  # remove cls token
         tag_ids = tf.cast(tag_ids[:, :, 0], tf.int32)
-        # tag_ids = tf.cast(tag_ids[:, :, :], tf.int32)
-        logits = self._tf_layers[f"embed.logits.{tag_index}"](outputs)
+
+        input = outputs
+        if previous_logits is not None:
+            input = tf.concat([input, previous_logits], axis=-1)
+
+        logits = self._tf_layers[f"embed.logits.{tag_index}"](input)
 
         # should call first to build weights
         pred_ids = self._tf_layers[f"crf.{tag_index}"](logits, sequence_lengths)
@@ -1390,7 +1395,7 @@ class DIET(RasaModel):
 
         f1 = self._f1_score_from_ids(tag_ids, pred_ids, mask, tag_index)
 
-        return loss, f1
+        return loss, f1, logits
 
     def batch_loss(
         self, batch_in: Union[Tuple[tf.Tensor], Tuple[np.ndarray]]
@@ -1441,7 +1446,7 @@ class DIET(RasaModel):
         if self.config[ENTITY_RECOGNITION]:
             tag_ids = tf_batch_data[TAG_IDS][0]
 
-            loss, f1 = self._calculate_entity_loss(
+            loss, f1, logits = self._calculate_entity_loss(
                 text_transformed, tag_ids, mask_text, sequence_lengths, 0
             )
             self.entity_loss.update_state(loss)
@@ -1450,8 +1455,8 @@ class DIET(RasaModel):
 
             sub_tag_ids = tf_batch_data["sub_" + TAG_IDS][0]
 
-            loss, f1 = self._calculate_entity_loss(
-                text_transformed, sub_tag_ids, mask_text, sequence_lengths, 1
+            loss, f1, _ = self._calculate_entity_loss(
+                text_transformed, sub_tag_ids, mask_text, sequence_lengths, 1, logits
             )
             self.sub_entity_loss.update_state(loss)
             self.sub_entity_f1.update_state(f1)
@@ -1495,12 +1500,14 @@ class DIET(RasaModel):
             out["i_scores"] = scores
 
         if self.config[ENTITY_RECOGNITION]:
-            logits = self._tf_layers["embed.logits.0"](text_transformed)
-            pred_ids = self._tf_layers["crf.0"](logits, sequence_lengths - 1)
+            logits_1 = self._tf_layers["embed.logits.0"](text_transformed)
+            pred_ids = self._tf_layers["crf.0"](logits_1, sequence_lengths - 1)
             out["e_ids"] = pred_ids
 
-            logits = self._tf_layers["embed.logits.1"](text_transformed)
-            pred_ids = self._tf_layers["crf.1"](logits, sequence_lengths - 1)
+            input = tf.concat([text_transformed, logits_1], axis=-1)
+
+            logits_2 = self._tf_layers["embed.logits.1"](input)
+            pred_ids = self._tf_layers["crf.1"](logits_2, sequence_lengths - 1)
             out["se_ids"] = pred_ids
 
         return out
