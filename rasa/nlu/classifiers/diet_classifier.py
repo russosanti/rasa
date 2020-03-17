@@ -780,15 +780,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                 if "." in tag:
                     tag = NO_ENTITY_TAG
             elif len(tags) == 2:
-                if "city" in tags:
-                    tag = "city"
-                    idx = tags.index("city")
-                    sub_tag = tags[[1, 0][idx]]
-                elif "iata" in tags:
-                    tag = "iata"
-                    idx = tags.index("iata")
-                    sub_tag = tags[[1, 0][idx]]
-                elif "." in tags[0] and "." in tags[1]:
+                if "." in tags[0] and "." in tags[1]:
                     tag = NO_ENTITY_TAG
                     sub_tag = NO_ENTITY_TAG
                 elif "." in tags[0] and "." not in tags[1]:
