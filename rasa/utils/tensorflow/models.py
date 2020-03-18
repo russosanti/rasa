@@ -68,15 +68,16 @@ class RasaModel(tf.keras.models.Model):
             self.tensorboard_log_on_epochs = tensorboard_log_level == "epoch"
 
             current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            class_name = self.__class__.__name__
 
-            train_log_dir = f"{tensorboard_log_dir}/{current_time}/train"
-            test_log_dir = f"{tensorboard_log_dir}/{current_time}/test"
+            train_log_dir = f"{tensorboard_log_dir}/{class_name}/{current_time}/train"
+            test_log_dir = f"{tensorboard_log_dir}/{class_name}/{current_time}/test"
 
             self.train_summary_writer = tf.summary.create_file_writer(train_log_dir)
             self.test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
             self.model_summary_file = (
-                f"{tensorboard_log_dir}/{current_time}/model_summary.txt"
+                f"{tensorboard_log_dir}/{class_name}/{current_time}/model_summary.txt"
             )
 
     def batch_loss(
@@ -131,38 +132,44 @@ class RasaModel(tf.keras.models.Model):
         val_results = {}  # validation is not performed every epoch
         progress_bar = tqdm(range(epochs), desc="Epochs", disable=disable)
 
-        train_steps = 0
-        evaluation_steps = 0
+        training_steps = 0
 
         for epoch in progress_bar:
             epoch_batch_size = self.linearly_increasing_batch_size(
                 epoch, batch_size, epochs
             )
 
-            train_steps = self._batch_loop(
+            training_steps = self._batch_loop(
                 train_dataset_function,
                 tf_train_on_batch_function,
                 epoch_batch_size,
                 True,
-                train_steps,
+                training_steps,
                 self.train_summary_writer,
             )
 
-            postfix_dict = self._get_metric_results(epoch, self.train_summary_writer)
+            if self.tensorboard_log_on_epochs:
+                self._log_metrics_for_tensorboard(epoch, self.train_summary_writer)
+
+            postfix_dict = self._get_metric_results()
 
             if evaluate_on_num_examples > 0:
                 if self._should_evaluate(evaluate_every_num_epochs, epochs, epoch):
-                    evaluation_steps = self._batch_loop(
+                    self._batch_loop(
                         evaluation_dataset_function,
                         tf_evaluation_on_batch_function,
                         epoch_batch_size,
                         False,
-                        evaluation_steps,
+                        training_steps,
                         self.test_summary_writer,
                     )
-                    val_results = self._get_metric_results(
-                        epoch, self.test_summary_writer, prefix="val_"
-                    )
+
+                    if self.tensorboard_log_on_epochs:
+                        self._log_metrics_for_tensorboard(
+                            epoch, self.test_summary_writer
+                        )
+
+                    val_results = self._get_metric_results(prefix="val_")
 
                 postfix_dict.update(val_results)
 
@@ -263,8 +270,9 @@ class RasaModel(tf.keras.models.Model):
         for batch_in in dataset_function(batch_size):
             call_model_function(batch_in)
 
-            if writer is not None and not self.tensorboard_log_on_epochs:
+            if not self.tensorboard_log_on_epochs:
                 self._log_metrics_for_tensorboard(step, writer)
+
             step += 1
 
         return step
@@ -330,17 +338,9 @@ class RasaModel(tf.keras.models.Model):
             ),
         )
 
-    def _get_metric_results(
-        self,
-        epoch: int,
-        writer: Optional[ResourceSummaryWriter] = None,
-        prefix: Optional[Text] = None,
-    ) -> Dict[Text, Text]:
+    def _get_metric_results(self, prefix: Optional[Text] = None) -> Dict[Text, Text]:
         """Get the metrics results"""
         prefix = prefix or ""
-
-        if writer is not None and self.tensorboard_log_on_epochs:
-            self._log_metrics_for_tensorboard(epoch, writer)
 
         return {
             f"{prefix}{metric.name}": f"{metric.result().numpy():.3f}"
@@ -349,12 +349,13 @@ class RasaModel(tf.keras.models.Model):
         }
 
     def _log_metrics_for_tensorboard(
-        self, step: int, writer: ResourceSummaryWriter
+        self, step: int, writer: Optional[ResourceSummaryWriter] = None
     ) -> None:
-        with writer.as_default():
-            for metric in self.metrics:
-                if metric.name in self.metrics_to_log:
-                    tf.summary.scalar(f"{metric.name}", metric.result(), step=step)
+        if writer is not None:
+            with writer.as_default():
+                for metric in self.metrics:
+                    if metric.name in self.metrics_to_log:
+                        tf.summary.scalar(metric.name, metric.result(), step=step)
 
     @staticmethod
     def _should_evaluate(
@@ -374,9 +375,9 @@ class RasaModel(tf.keras.models.Model):
         """Convert input batch tensors into batch data format.
 
         Batch contains any number of batch data. The order is equal to the
-        key-value pairs in session data. As sparse data were converted into indices, data,
-        shape before, this methods converts them into sparse tensors. Dense data is
-        kept.
+        key-value pairs in session data. As sparse data were converted into indices,
+        data, shape before, this methods converts them into sparse tensors. Dense data
+        is kept.
         """
 
         batch_data = defaultdict(list)
@@ -430,21 +431,18 @@ class RasaModel(tf.keras.models.Model):
         )
         layers = [
             f"{layer.name} ({layer.dtype.name}) "
-            f"[{'x'.join([str(s) for s in layer.shape])}]"
+            f"[{'x'.join(str(s) for s in layer.shape)}]"
             for layer in self.trainable_variables
         ]
         layers.reverse()
 
-        file = open(self.model_summary_file, "w")
-
-        file.write("Variables: name (type) [shape]\n\n")
-        for layer in layers:
-            file.write(layer)
+        with open(self.model_summary_file, "w") as file:
+            file.write("Variables: name (type) [shape]\n\n")
+            for layer in layers:
+                file.write(layer)
+                file.write("\n")
             file.write("\n")
-        file.write("\n")
-        file.write(f"Total size of variables: {total_number_of_variables}")
-
-        file.close()
+            file.write(f"Total size of variables: {total_number_of_variables}")
 
     def compile(self, *args, **kwargs) -> None:
         raise Exception(
