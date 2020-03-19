@@ -22,6 +22,7 @@ from rasa.nlu.constants import (
     SPARSE_FEATURE_NAMES,
     DENSE_FEATURE_NAMES,
     TOKENS_NAMES,
+    BILOU_ENTITIES,
 )
 from rasa.nlu.extractors.extractor import EntityExtractor
 from rasa.nlu.featurizers.featurizer import Featurizer
@@ -324,9 +325,6 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
     ) -> List[Dict[Text, int]]:
         """Create tag_id dictionary"""
 
-        # if self.component_config[BILOU_FLAG]:
-        #    return bilou_utils.build_tag_id_dict(training_data)
-
         def build(key: Text):
             distinct_tag_ids = (
                 set(
@@ -347,9 +345,11 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
 
             return tag_id_dict
 
-        tag_id_dict = [build("entity"), build("sub_entity")]
+        if self.component_config[BILOU_FLAG]:
+            BILOU_tag_id_dict = {NO_ENTITY_TAG: 0, "B": 1, "I": 2, "U": 3, "L": 4}
+            return [BILOU_tag_id_dict, build("entity"), build("sub_entity")]
 
-        return tag_id_dict
+        return [build("entity"), build("sub_entity")]
 
     @staticmethod
     def _find_example_for_label(
@@ -515,6 +515,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         label_ids = []
         tag_ids = []
         sub_tag_ids = []
+        bilou_tag_ids = []
 
         for e in training_data:
             if label_attribute is None or e.get(label_attribute):
@@ -535,26 +536,69 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                     label_ids.append(label_id_dict[e.get(label_attribute)])
 
             if self.component_config.get(ENTITY_RECOGNITION) and tag_id_dict:
-                # if self.component_config[BILOU_FLAG]:
-                #    _tags = bilou_utils.tags_to_ids(e, tag_id_dict)
-                # else:
-                _tags = []
-                _sub_tags = []
-                for t in e.get(TOKENS_NAMES[TEXT]):
-                    __tags = determine_token_labels(t, e.get(ENTITIES), None)
+                if self.component_config[BILOU_FLAG]:
+                    _tags = []
+                    _sub_tags = []
+                    _bilou_tags = []
+                    if e.get(BILOU_ENTITIES):
+                        for _tag_label in e.get(BILOU_ENTITIES):
+                            if _tag_label == NO_ENTITY_TAG or _tag_label == "-":
+                                _tags.append([tag_id_dict[1][NO_ENTITY_TAG]])
+                                _sub_tags.append([tag_id_dict[2][NO_ENTITY_TAG]])
+                                _bilou_tags.append([tag_id_dict[0][NO_ENTITY_TAG]])
+                                continue
 
-                    _tags.append([tag_id_dict[0][__tags[0]]])
-                    _sub_tags.append([tag_id_dict[1][__tags[1]]])
+                            _bilou_tag = bilou_utils.bilou_prefix_from_tag(_tag_label)
+                            tag_without_bilou = bilou_utils.entity_name_from_tag(
+                                _tag_label
+                            )
+                            if "." in tag_without_bilou:
+                                parts = tag_without_bilou.split(".")
+                                _entity_tag = parts[0]
+                                _sub_entity_tag = parts[1]
+                            else:
+                                _entity_tag = tag_without_bilou
+                                _sub_entity_tag = NO_ENTITY_TAG
 
-                # seq_len x 1
-                tag_ids.append(np.array(_tags))
-                sub_tag_ids.append(np.array(_sub_tags))
+                            _tags.append([tag_id_dict[1][_entity_tag]])
+                            _sub_tags.append([tag_id_dict[2][_sub_entity_tag]])
+                            _bilou_tags.append([tag_id_dict[0][_bilou_tag]])
+                    else:
+                        _tags = [
+                            tag_id_dict[NO_ENTITY_TAG]
+                            for _ in e.get(TOKENS_NAMES[TEXT])
+                        ]
+                        _sub_tags = [
+                            tag_id_dict[NO_ENTITY_TAG]
+                            for _ in e.get(TOKENS_NAMES[TEXT])
+                        ]
+                        _bilou_tags = [
+                            tag_id_dict[NO_ENTITY_TAG]
+                            for _ in e.get(TOKENS_NAMES[TEXT])
+                        ]
+
+                    tag_ids.append(np.array(_tags))
+                    sub_tag_ids.append(np.array(_sub_tags))
+                    bilou_tag_ids.append(np.array(_bilou_tags))
+                else:
+                    _tags = []
+                    _sub_tags = []
+                    for t in e.get(TOKENS_NAMES[TEXT]):
+                        __tags = determine_token_labels(t, e.get(ENTITIES), None)
+
+                        _tags.append([tag_id_dict[0][__tags[0]]])
+                        _sub_tags.append([tag_id_dict[1][__tags[1]]])
+
+                    # seq_len x 1
+                    tag_ids.append(np.array(_tags))
+                    sub_tag_ids.append(np.array(_sub_tags))
 
         X_sparse = np.array(X_sparse)
         X_dense = np.array(X_dense)
         Y_sparse = np.array(Y_sparse)
         Y_dense = np.array(Y_dense)
         label_ids = np.array(label_ids)
+        bilou_tag_ids = np.array(bilou_tag_ids)
         tag_ids = np.array(tag_ids)
         sub_tag_ids = np.array(sub_tag_ids)
 
@@ -570,8 +614,14 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         # explicitly add last dimension to label_ids
         # to track correctly dynamic sequences
         model_data.add_features(LABEL_IDS, [np.expand_dims(label_ids, -1)])
-        model_data.add_features(TAG_IDS, [tag_ids])
-        model_data.add_features("sub_" + TAG_IDS, [sub_tag_ids])
+
+        if not self.component_config[BILOU_FLAG]:
+            model_data.add_features(TAG_IDS + ".0", [tag_ids])
+            model_data.add_features(TAG_IDS + ".1", [sub_tag_ids])
+        else:
+            model_data.add_features(TAG_IDS + ".0", [bilou_tag_ids])
+            model_data.add_features(TAG_IDS + ".1", [tag_ids])
+            model_data.add_features(TAG_IDS + ".2", [sub_tag_ids])
 
         model_data.add_mask(TEXT_MASK, TEXT_FEATURES)
         model_data.add_mask(LABEL_MASK, LABEL_FEATURES)
@@ -745,16 +795,12 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
             return []
 
         # load tf graph and session
-        predictions = predict_out["e_ids"].numpy()
+        offset = 1 if self.component_config[BILOU_FLAG] else 0
 
-        tags = [self.index_tag_id_mapping[0][p] for p in predictions[0]]
-
-        predictions = predict_out["se_ids"].numpy()
-
-        sub_tags = [self.index_tag_id_mapping[1][p] for p in predictions[0]]
-
-        # if self.component_config[BILOU_FLAG]:
-        #    tags = bilou_utils.remove_bilou_prefixes(tags)
+        predictions = predict_out[f"e_ids.{0 + offset}"].numpy()
+        tags = [self.index_tag_id_mapping[0 + offset][p] for p in predictions[0]]
+        predictions = predict_out[f"e_ids.{1 + offset}"].numpy()
+        sub_tags = [self.index_tag_id_mapping[1 + offset][p] for p in predictions[0]]
 
         entities = self._convert_tags_to_entities(
             message.text, message.get(TOKENS_NAMES[TEXT], []), tags, sub_tags
@@ -922,7 +968,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
     @classmethod
     def _load_model(
         cls,
-        index_tag_id_mapping: Dict[int, Text],
+        index_tag_id_mapping: List[Dict[int, Text]],
         label_data: RasaModelData,
         meta: Dict[Text, Any],
         data_example: Dict[Text, List[np.ndarray]],
@@ -1031,11 +1077,11 @@ class DIET(RasaModel):
                     "for text_features and label_features must coincide."
                 )
 
-        if self.config[ENTITY_RECOGNITION] and TAG_IDS not in self.data_signature:
-            raise ValueError(
-                f"No tag ids present. "
-                f"Cannot train '{self.__class__.__name__}' model."
-            )
+        # if self.config[ENTITY_RECOGNITION] and TAG_IDS not in self.data_signature:
+        #     raise ValueError(
+        #         f"No tag ids present. "
+        #         f"Cannot train '{self.__class__.__name__}' model."
+        #     )
 
     def _create_metrics(self) -> None:
         # self.metrics will have the same order as they are created
@@ -1044,11 +1090,22 @@ class DIET(RasaModel):
         self.intent_loss = tf.keras.metrics.Mean(name="i_loss")
         self.entity_loss = tf.keras.metrics.Mean(name="e_loss")
         self.sub_entity_loss = tf.keras.metrics.Mean(name="se_loss")
+        self.bilou_entity_loss = tf.keras.metrics.Mean(name="be_loss")
         # create accuracy metrics second to output accuracies second
         self.mask_acc = tf.keras.metrics.Mean(name="m_acc")
         self.response_acc = tf.keras.metrics.Mean(name="i_acc")
         self.entity_f1 = tf.keras.metrics.Mean(name="e_f1")
         self.sub_entity_f1 = tf.keras.metrics.Mean(name="se_f1")
+        self.bilou_entity_f1 = tf.keras.metrics.Mean(name="be_f1")
+
+        self.entity_metrics = {
+            "loss.0": self.bilou_entity_loss,
+            "loss.1": self.entity_loss,
+            "loss.2": self.sub_entity_loss,
+            "f1.0": self.bilou_entity_f1,
+            "f1.1": self.entity_f1,
+            "f1.2": self.sub_entity_f1,
+        }
 
     def _update_metrics_to_log(self) -> None:
         if self.config[MASKED_LM]:
@@ -1175,27 +1232,17 @@ class DIET(RasaModel):
         self._prepare_dot_product_loss(LABEL)
 
     def _prepare_entity_recognition_layers(self) -> None:
-        self._tf_layers["embed.logits.0"] = layers.Embed(
-            self._num_tags[0], self.config[REGULARIZATION_CONSTANT], "logits.0"
-        )
-        self._tf_layers["crf.0"] = layers.CRF(
-            self._num_tags[0], self.config[REGULARIZATION_CONSTANT]
-        )
-        self._tf_layers["crf_f1_score.0"] = tfa.metrics.F1Score(
-            num_classes=self._num_tags[0] - 1,  # `0` prediction is not a prediction
-            average="micro",
-        )
-
-        self._tf_layers["embed.logits.1"] = layers.Embed(
-            self._num_tags[1], self.config[REGULARIZATION_CONSTANT], "logits.1"
-        )
-        self._tf_layers["crf.1"] = layers.CRF(
-            self._num_tags[1], self.config[REGULARIZATION_CONSTANT]
-        )
-        self._tf_layers["crf_f1_score.1"] = tfa.metrics.F1Score(
-            num_classes=self._num_tags[1] - 1,  # `0` prediction is not a prediction
-            average="micro",
-        )
+        for index, num_tags in enumerate(self._num_tags):
+            self._tf_layers[f"embed.logits.{index}"] = layers.Embed(
+                num_tags, self.config[REGULARIZATION_CONSTANT], f"logits.{index}"
+            )
+            self._tf_layers[f"crf.{index}"] = layers.CRF(
+                num_tags, self.config[REGULARIZATION_CONSTANT]
+            )
+            self._tf_layers[f"crf_f1_score.{index}"] = tfa.metrics.F1Score(
+                num_classes=num_tags - 1,  # `0` prediction is not a prediction
+                average="micro",
+            )
 
     @staticmethod
     def _get_sequence_lengths(mask: tf.Tensor) -> tf.Tensor:
@@ -1444,23 +1491,25 @@ class DIET(RasaModel):
             losses.append(loss)
 
         if self.config[ENTITY_RECOGNITION]:
-            tag_ids = tf_batch_data[TAG_IDS][0]
 
-            loss, f1, logits = self._calculate_entity_loss(
-                text_transformed, tag_ids, mask_text, sequence_lengths, 0
-            )
-            self.entity_loss.update_state(loss)
-            self.entity_f1.update_state(f1)
-            losses.append(loss)
+            prev_logits = None
+            for index in range(0, len(self._num_tags)):
+                tag_ids = tf_batch_data[f"{TAG_IDS}.{index}"][0]
 
-            sub_tag_ids = tf_batch_data["sub_" + TAG_IDS][0]
+                loss, f1, logits = self._calculate_entity_loss(
+                    text_transformed,
+                    tag_ids,
+                    mask_text,
+                    sequence_lengths,
+                    index,
+                    prev_logits,
+                )
+                prev_logits = logits
 
-            loss, f1, _ = self._calculate_entity_loss(
-                text_transformed, sub_tag_ids, mask_text, sequence_lengths, 1, logits
-            )
-            self.sub_entity_loss.update_state(loss)
-            self.sub_entity_f1.update_state(f1)
-            losses.append(loss)
+                self.entity_metrics[f"loss.{index}"].update_state(loss)
+                self.entity_metrics[f"f1.{index}"].update_state(f1)
+
+                losses.append(loss)
 
         return tf.math.add_n(losses)
 
@@ -1500,15 +1549,18 @@ class DIET(RasaModel):
             out["i_scores"] = scores
 
         if self.config[ENTITY_RECOGNITION]:
-            logits_1 = self._tf_layers["embed.logits.0"](text_transformed)
-            pred_ids = self._tf_layers["crf.0"](logits_1, sequence_lengths - 1)
-            out["e_ids"] = pred_ids
+            _logits = None
 
-            input = tf.concat([text_transformed, logits_1], axis=-1)
+            for index in range(0, len(self._num_tags)):
+                _input = text_transformed
+                if _logits is not None:
+                    _input = tf.concat([_input, _logits], axis=-1)
 
-            logits_2 = self._tf_layers["embed.logits.1"](input)
-            pred_ids = self._tf_layers["crf.1"](logits_2, sequence_lengths - 1)
-            out["se_ids"] = pred_ids
+                _logits = self._tf_layers[f"embed.logits.{index}"](_input)
+                pred_ids = self._tf_layers[f"crf.{index}"](
+                    _logits, sequence_lengths - 1
+                )
+                out[f"e_ids.{index}"] = pred_ids
 
         return out
 

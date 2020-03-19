@@ -128,7 +128,11 @@ def map_message_entities(message: Message) -> List[Tuple[int, int, Text]]:
     """
 
     def convert_entity(entity: Dict[Text, Any]) -> Tuple[int, int, Text]:
-        return entity["start"], entity["end"], entity["entity"]
+        if entity["sub_entity"] is not None and entity["sub_entity"] != NO_ENTITY_TAG:
+            _entity_value = f"{entity['entity']}.{entity['sub_entity']}"
+        else:
+            _entity_value = entity["entity"]
+        return entity["start"], entity["end"], _entity_value
 
     return [convert_entity(entity) for entity in message.get(ENTITIES, [])]
 
