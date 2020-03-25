@@ -19,6 +19,7 @@ from rasa.nlu.test import determine_token_labels
 from rasa.nlu.tokenizers.tokenizer import Token
 from rasa.nlu.classifiers import LABEL_RANKING_LENGTH
 from rasa.utils import train_utils
+from rasa.utils.common import raise_warning
 from rasa.utils.tensorflow import layers
 from rasa.utils.tensorflow.transformer import TransformerEncoder
 from rasa.utils.tensorflow.models import RasaModel
@@ -277,7 +278,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         """Declare instance variables with default values."""
 
         if component_config is not None and EPOCHS not in component_config:
-            logger.warning(
+            raise_warning(
                 f"Please configure the number of '{EPOCHS}' in your configuration file."
                 f" We will change the default value of '{EPOCHS}' in the future to 1. "
             )
@@ -636,7 +637,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                 return
 
         # keep one example for persisting and loading
-        self.data_example = self.data_example = model_data.first_data_example()
+        self.data_example = model_data.first_data_example()
 
         self.model = self.model_class()(
             data_signature=model_data.get_signature(),
@@ -1096,7 +1097,7 @@ class DIET(RasaModel):
             self.config[SIMILARITY_TYPE],
         )
 
-    def _prepare_dot_product_loss(self, name: Text) -> None:
+    def _prepare_dot_product_loss(self, name: Text, scale_loss: bool) -> None:
         self._tf_layers[f"loss.{name}"] = layers.DotProductLoss(
             self.config[NUM_NEG],
             self.config[LOSS_TYPE],
@@ -1104,7 +1105,7 @@ class DIET(RasaModel):
             self.config[MAX_NEG_SIM],
             self.config[USE_MAX_NEG_SIM],
             self.config[NEGATIVE_MARGIN_SCALE],
-            self.config[SCALE_LOSS],
+            scale_loss,
             # set to 1 to get deterministic behaviour
             parallel_iterations=1 if self.random_seed is not None else 1000,
         )
@@ -1138,13 +1139,15 @@ class DIET(RasaModel):
         self._prepare_embed_layers(f"{name}_lm_mask")
         self._prepare_embed_layers(f"{name}_golden_token")
 
-        self._prepare_dot_product_loss(f"{name}_mask")
+        # mask loss is additional loss
+        # set scaling to False, so that it doesn't overpower other losses
+        self._prepare_dot_product_loss(f"{name}_mask", scale_loss=False)
 
     def _prepare_label_classification_layers(self) -> None:
         self._prepare_embed_layers(TEXT)
         self._prepare_embed_layers(LABEL)
 
-        self._prepare_dot_product_loss(LABEL)
+        self._prepare_dot_product_loss(LABEL, self.config[SCALE_LOSS])
 
     def _prepare_entity_recognition_layers(self) -> None:
         self._tf_layers["embed.logits"] = layers.Embed(
