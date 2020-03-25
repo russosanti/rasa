@@ -730,7 +730,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
                 "There is no trained model: component is either not trained or "
                 "didn't receive enough training data."
             )
-            return
+            return None
 
         # create session data from message and convert it into a batch of 1
         model_data = self._create_model_data([message])
@@ -812,9 +812,8 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
 
         return entities
 
-    @staticmethod
     def _convert_tags_to_entities(
-        text: Text, tokens: List[Token], tags: List[Text], sub_tags: List[Text]
+        self, text: Text, tokens: List[Token], tags: List[Text], sub_tags: List[Text]
     ) -> List[Dict[Text, Any]]:
         entities = []
         last_tag = NO_ENTITY_TAG
@@ -843,7 +842,7 @@ class DIETClassifier(IntentClassifier, EntityExtractor):
         for entity in entities:
             entity["value"] = text[entity["start"] : entity["end"]]
 
-        return entities
+        return self.clean_up_entities(entities)
 
     def process(self, message: Message, **kwargs: Any) -> None:
         """Return the most likely label and its similarity to the input."""
@@ -1275,7 +1274,7 @@ class DIET(RasaModel):
 
     def _features_as_seq_ids(
         self, features: List[Union[np.ndarray, tf.Tensor, tf.SparseTensor]], name: Text
-    ) -> tf.Tensor:
+    ) -> Optional[tf.Tensor]:
         """Creates dense labels for negative sampling."""
 
         # if there are dense features - we can use them
@@ -1289,6 +1288,8 @@ class DIET(RasaModel):
                 return tf.stop_gradient(
                     self._tf_layers[f"sparse_to_dense_ids.{name}"](f)
                 )
+
+        return None
 
     def _create_bow(
         self,
