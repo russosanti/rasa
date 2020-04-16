@@ -382,6 +382,11 @@ def add_root_route(app: Sanic):
         """Check if the server is running and responds with the version."""
         return response.text("Hello from Rasa: " + rasa.__version__)
 
+    @app.get("/ping")
+    async def hello(request: Request):
+        """Check if the server is running and responds with the version."""
+        return response.text("Hello from Alexia: " + rasa.__version__)
+
 
 def create_app(
     agent: Optional["Agent"] = None,
