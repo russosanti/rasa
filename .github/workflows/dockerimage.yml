@@ -14,10 +14,8 @@ jobs:
 
     steps:
       - name: Build and push Docker images
-        uses: docker/build-push-action@v1.0.1
+        uses: elgohr/Publish-Docker-Github-Action@master
         with:
+          name: ixmeli/alexia
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-          context: ${{ github.workspace }}
-          repository: ixmeli/alexia
-          tags: latest
